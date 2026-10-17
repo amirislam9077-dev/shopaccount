@@ -7,7 +7,91 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
+/* Purchase form — same blue focus as the sale form */
+.purchase-form input:focus,
+.purchase-form select:focus,
+.purchase-form textarea:focus {
+  outline: none;
+  border: 2px solid #3b82f6 !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25) !important;
+  background-color: #eff6ff !important;
 }
+
+/* Sale form — blue focus */
+.sale-form input:focus,
+.sale-form select:focus,
+.sale-form textarea:focus {
+  outline: none;
+  border: 2px solid #3b82f6 !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25) !important;
+  background-color: #eff6ff !important;
+}
+
+/* Printing a report: hide app chrome and let tables use the full page */
+@media print {
+  .no-print { display: none !important; }
+  body, main { background: #fff !important; }
+  main { padding: 0 !important; overflow: visible !important; min-height: 0 !important; }
+  main * { overflow: visible !important; max-height: none !important; }
+  table { font-size: 10px; }
+  tr { break-inside: avoid; }
+  @page { size: A4 landscape; margin: 10mm; }
+}
+
+/* Report pagination: rows off the current page are hidden on screen but still printed / exported */
+.page-hidden { display: none; }
+@media print {
+  tr.page-hidden { display: table-row !important; }
+}
+
+/* App shell is fixed to the window height on screen; let it grow when printing so nothing is clipped */
+@media print {
+  .app-shell { height: auto !important; display: block !important; }
+  .app-body { display: block !important; }
+}
+
+/* Table cells stay on one line on every screen; wide tables scroll sideways inside their box */
+main table th, main table td { white-space: nowrap; }
+/* a little less side padding so one-line rows still fit the screen */
+main table th, main table td { padding-left: 0.5rem !important; padding-right: 0.5rem !important; }
+
+/* Every table heading row (data entry lists and reports): app blue, white bold text, one line */
+main table thead th {
+  background-color: #1d4ed8 !important;   /* blue-700 */
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  white-space: nowrap !important;
+  border-color: #1e40af !important;        /* blue-800 */
+}
+main table thead tr { background-color: #1d4ed8 !important; }
+main table thead th input[type="checkbox"] { accent-color: #ffffff; }
+
+/* Purchase total sits on a dark strip: keep it dark (not the light focus colour) while typing */
+.purchase-form input.total-input:focus {
+  background-color: #334155 !important;   /* slate-700 */
+  border: none !important;
+  box-shadow: 0 0 0 2px rgba(147, 197, 253, 0.6) !important;
+}
+
+/* ── Page colours: Purchase = blue, Sales = teal, so it is clear at a glance which page is open ── */
+.theme-purchase .section-head,
+.theme-purchase .form-icon            { background-color: #1e40af !important; }   /* blue-800 */
+.theme-purchase .form-save            { background-color: #2563eb !important; }   /* blue-600 */
+.theme-purchase .form-save:hover      { background-color: #1d4ed8 !important; }
+.theme-purchase .section-highlight    { border-color: #60a5fa !important; }        /* blue-400 */
+.theme-purchase .section-highlight .section-body { background-color: rgba(239, 246, 255, 0.6) !important; }
+.theme-purchase main table thead th,
+.theme-purchase table thead th,
+.theme-purchase table thead tr        { background-color: #1d4ed8 !important; border-color: #1e40af !important; }
+
+.theme-sale .section-head,
+.theme-sale .form-icon                { background-color: #0f766e !important; }   /* teal-700 */
+.theme-sale .form-save                { background-color: #0d9488 !important; }   /* teal-600 */
+.theme-sale .form-save:hover          { background-color: #0f766e !important; }
+.theme-sale .section-highlight        { border-color: #2dd4bf !important; }        /* teal-400 */
+.theme-sale .section-highlight .section-body { background-color: rgba(240, 253, 250, 0.7) !important; }
+.theme-sale .scan-box                 { border-color: #14b8a6 !important; background-color: #f0fdfa !important; }
+.theme-sale .scan-box label           { color: #115e59 !important; }
+.theme-sale .scan-box input           { border-color: #0d9488 !important; }
+.theme-sale table thead th,
+.theme-sale table thead tr            { background-color: #0f766e !important; border-color: #115e59 !important; }

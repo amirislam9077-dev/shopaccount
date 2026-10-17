@@ -1,0 +1,91 @@
+.sa-login {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: #f4f4f2;
+  font-family: 'Segoe UI', Arial, sans-serif;
+}
+
+.sa-login-card {
+  width: 100%;
+  max-width: 360px;
+  display: grid;
+  gap: 12px;
+  padding: 28px;
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+}
+
+.sa-login-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.sa-login-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  background: #111;
+  color: #fff;
+  font-weight: 800;
+}
+
+.sa-login-brand strong {
+  display: block;
+  font-size: 16px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.sa-login-brand span {
+  display: block;
+  font-size: 12px;
+  color: #9a7b3c;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+
+.sa-login-card p {
+  margin: 0;
+  font-size: 13px;
+  color: #666;
+}
+
+.sa-login-card input {
+  padding: 11px 12px;
+  border: 1px solid #d9d9d9;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.sa-login-card button {
+  padding: 11px;
+  border: none;
+  border-radius: 8px;
+  background: #111;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.sa-login-card button:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.sa-login-card .sa-login-error {
+  padding: 9px 11px;
+  border-radius: 8px;
+  background: #fdecea;
+  color: #b3261e;
+}
