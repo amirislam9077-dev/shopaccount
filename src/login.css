@@ -45,7 +45,7 @@
   text-transform: uppercase;
 }
 
-.sa-login-brand span {
+.sa-login-brand div span {
   display: block;
   font-size: 12px;
   color: #9a7b3c;
@@ -88,4 +88,31 @@
   border-radius: 8px;
   background: #fdecea;
   color: #b3261e;
+}
+
+.sa-login-links {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sa-login-card button.sa-login-link {
+  padding: 4px 0;
+  background: none;
+  color: #111;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.sa-login-card button.sa-login-link:hover {
+  color: #9a7b3c;
+}
+
+.sa-login-card .sa-login-note {
+  padding: 9px 11px;
+  border-radius: 8px;
+  background: #e8f5e9;
+  color: #1b5e20;
 }

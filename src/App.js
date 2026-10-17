@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import MainMenu from './component/mainmenu';
 import { API_URL, apiFetch, askOpenerForLogin, readLogin, saveLogin, setLoggedOutHandler } from './api';
+import PasswordScreen from './password';
 import './login.css';
 
 // The accounts app opens only after logging in with the admin email + password.
@@ -9,6 +10,7 @@ function LoginScreen({ onLogin }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [passwordMode, setPasswordMode] = useState(''); // '' | 'change' | 'forgot'
 
   // The free online server sleeps when idle; start waking it right away
   useEffect(() => {
@@ -46,6 +48,23 @@ function LoginScreen({ onLogin }) {
     }
   };
 
+  if (passwordMode) {
+    return (
+      <div className="sa-login">
+        <PasswordScreen
+          mode={passwordMode}
+          initialEmail={email}
+          onBack={() => setPasswordMode('')}
+          onChanged={(login) => {
+            // log straight in with the new password
+            saveLogin(login);
+            onLogin(login);
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="sa-login">
       <form className="sa-login-card" onSubmit={submit}>
@@ -61,6 +80,10 @@ function LoginScreen({ onLogin }) {
         <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
         {error && <p className="sa-login-error">{error}</p>}
         <button type="submit" disabled={busy}>{busy ? 'Logging in…' : 'Log in'}</button>
+        <div className="sa-login-links">
+          <button type="button" className="sa-login-link" onClick={() => setPasswordMode('forgot')}>Forgot password?</button>
+          <button type="button" className="sa-login-link" onClick={() => setPasswordMode('change')}>Change password</button>
+        </div>
       </form>
     </div>
   );
