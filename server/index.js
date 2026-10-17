@@ -48,14 +48,45 @@ const sameText = (a, b) => {
   return crypto.timingSafeEqual(x, y);
 };
 
-app.use('/api', (req, res, next) => {
+// The password can be changed (or reset) from the Khurram Studio admin page.
+// That saves it, hashed, in the website database's admin_login table; read it
+// from there so both apps use the same password. Without it, ADMIN_PASSWORD.
+const LOGIN_DB = (process.env.LOGIN_DB || 'kstu_orders').replace(/[^\w$]/g, '');
+let savedHash = { value: null, at: 0 };
+async function changedPasswordHash() {
+  if (Date.now() - savedHash.at < 15000) return savedHash.value;
+  try {
+    const [rows] = await db.query(`SELECT password_hash FROM \`${LOGIN_DB}\`.admin_login WHERE id = 1`);
+    savedHash = { value: (rows[0] && rows[0].password_hash) || null, at: Date.now() };
+  } catch (err) {
+    // no such table here (e.g. local MySQL): keep using ADMIN_PASSWORD
+    savedHash = { value: null, at: Date.now() };
+  }
+  return savedHash.value;
+}
+
+// scrypt is slow on purpose: remember the last password that matched
+let lastGood = { stored: '', given: null };
+const matchesHash = (secret, stored) => {
+  const [kind, salt, hash] = String(stored || '').split(':');
+  if (kind !== 'scrypt' || !salt || !hash) return false;
+  const given = crypto.createHash('sha256').update(String(secret)).digest();
+  if (lastGood.stored === stored && lastGood.given && crypto.timingSafeEqual(given, lastGood.given)) return true;
+  const ok = crypto.timingSafeEqual(crypto.scryptSync(String(secret), salt, 64), Buffer.from(hash, 'hex'));
+  if (ok) lastGood = { stored, given };
+  return ok;
+};
+
+app.use('/api', async (req, res, next) => {
   const email = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
   const password = process.env.ADMIN_PASSWORD || '';
   if (!email || !password) {
     return res.status(503).json({ error: 'ADMIN_EMAIL and ADMIN_PASSWORD must be set on the server.' });
   }
+  const givenPassword = String(req.get('x-admin-key') || '');
   const okEmail = sameText(String(req.get('x-admin-email') || '').trim().toLowerCase(), email);
-  const okPassword = sameText(req.get('x-admin-key') || '', password);
+  const stored = await changedPasswordHash();
+  const okPassword = stored ? matchesHash(givenPassword, stored) : sameText(givenPassword, password);
   if (!okEmail || !okPassword) {
     return res.status(401).json({ error: 'Wrong email or password.' });
   }
