@@ -1286,7 +1286,7 @@ const API_PAY = API_URL;
 
 // Sidebar links under Log Out (the shop's website and its admin); they open in a new tab
 const ADMIN_PAGE_URL   = 'https://kstu-delta.vercel.app/admin/orders';
-const WEBSITE_PAGE_URL = 'https://kstu-delta.vercel.app/';
+const WEBSITE_PAGE_URL = 'https://kstu-delta.vercel.app/?from=accounts'; // shows "Back to Accounts" on the site
 
 function generatePaymentId(n) {
   return `PAY-${String(n).padStart(6, '0')}`;
