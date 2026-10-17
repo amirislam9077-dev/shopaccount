@@ -31,10 +31,63 @@ export const saveLogin = (login) => {
   }
 };
 
+// After "Log Out" this tab must not log itself back in from the website
+const NO_AUTO_LOGIN = 'ksNoAutoLogin';
+const setNoAutoLogin = (on) => {
+  try {
+    if (on) window.sessionStorage.setItem(NO_AUTO_LOGIN, '1');
+    else window.sessionStorage.removeItem(NO_AUTO_LOGIN);
+  } catch (error) {
+    // storage blocked
+  }
+};
+const noAutoLogin = () => {
+  try {
+    return window.sessionStorage.getItem(NO_AUTO_LOGIN) === '1';
+  } catch (error) {
+    return false;
+  }
+};
+
+// Typed in by hand: auto login from the website may be used again later
+export const loggedInByHand = () => setNoAutoLogin(false);
+
+// Website tabs opened from here (they are told about a log out too)
+const openedTabs = [];
+export const openWebsite = (url) => {
+  const tab = window.open(url, '_blank');
+  if (tab) openedTabs.push(tab);
+};
+
+let onLoggedOut = () => {};
+export const setLoggedOutHandler = (fn) => {
+  onLoggedOut = fn;
+};
+
+// "Log Out": forget the login here, and log out the connected website tabs too
+export const logOutEverywhere = () => {
+  saveLogin(null);
+  setNoAutoLogin(true);
+  [window.opener, ...openedTabs].forEach((tab) => {
+    try {
+      if (tab && !tab.closed) tab.postMessage({ type: 'ks-logout' }, WEBSITE_ORIGIN);
+    } catch (error) {
+      // tab gone or on another site
+    }
+  });
+};
+
 // The website (in a tab this app opened, or that opened this one) asks for the
-// login: answer only that exact site, and only when logged in here.
+// login, or says it logged out: listen only to that exact site.
 window.addEventListener('message', (event) => {
-  if (event.origin !== WEBSITE_ORIGIN || !event.source || event.data?.type !== 'ks-login-request') return;
+  if (event.origin !== WEBSITE_ORIGIN || !event.source) return;
+  if (event.data?.type === 'ks-logout') {
+    saveLogin(null);
+    setNoAutoLogin(true);
+    onLoggedOut();
+    return;
+  }
+  if (event.data?.type !== 'ks-login-request') return;
   const login = readLogin();
   if (login) event.source.postMessage({ type: 'ks-login', ...login }, event.origin);
 });
@@ -44,7 +97,7 @@ window.addEventListener('message', (event) => {
 // Used once per page load, so a wrong login shows the login form instead of looping.
 let askedOpener = false;
 export const askOpenerForLogin = (onLogin) => {
-  if (askedOpener || !window.opener) return () => {};
+  if (askedOpener || noAutoLogin() || !window.opener) return () => {};
   const listener = (event) => {
     if (event.origin !== WEBSITE_ORIGIN || event.data?.type !== 'ks-login') return;
     const login = clean(event.data);
@@ -59,11 +112,6 @@ export const askOpenerForLogin = (onLogin) => {
     // opener gone
   }
   return () => window.removeEventListener('message', listener);
-};
-
-let onLoggedOut = () => {};
-export const setLoggedOutHandler = (fn) => {
-  onLoggedOut = fn;
 };
 
 // fetch() that sends the login with every request to the accounts server

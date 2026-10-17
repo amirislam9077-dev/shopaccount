@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import MainMenu from './component/mainmenu';
-import { API_URL, apiFetch, askOpenerForLogin, readLogin, saveLogin, setLoggedOutHandler } from './api';
+import { API_URL, apiFetch, askOpenerForLogin, loggedInByHand, readLogin, saveLogin, setLoggedOutHandler } from './api';
 import PasswordScreen from './password';
 import './login.css';
 
@@ -36,6 +36,7 @@ function LoginScreen({ onLogin }) {
       const res = await apiFetch(`${API_URL}/api/login`, {}, login);
       if (res.ok) {
         saveLogin(login);
+        loggedInByHand();
         onLogin(login);
       } else {
         const body = await res.json().catch(() => ({}));
@@ -58,6 +59,7 @@ function LoginScreen({ onLogin }) {
           onChanged={(login) => {
             // log straight in with the new password
             saveLogin(login);
+            loggedInByHand();
             onLogin(login);
           }}
         />
