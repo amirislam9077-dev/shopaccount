@@ -4630,7 +4630,7 @@ function SummaryReportForm({ products, parties }) {
 // ── main component ────────────────────────────────────────────────────────────
 
 export default function MainMenu() {
-  const [activeView, setActiveView] = useState('purchase-data-entry');
+  const [activeView, setActiveView] = useState('sales-data-entry');
   const mainRef = useRef(null);
   // phones/tablets: the sidebar is a slide-in drawer opened from the header
   const [menuOpen, setMenuOpen] = useState(false);
