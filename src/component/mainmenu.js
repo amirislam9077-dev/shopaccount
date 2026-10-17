@@ -4855,7 +4855,7 @@ export default function MainMenu() {
               ['Go to Website Page', WEBSITE_PAGE_URL, 'M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9'],
             ].map(([label, url, icon]) => (
               <button key={label}
-                onClick={() => url ? window.open(url, '_blank', 'noopener') : alert(`The link for "${label}" has not been set yet.`)}
+                onClick={() => url ? window.open(url, '_blank') : alert(`The link for "${label}" has not been set yet.`)}
                 className="w-full flex items-center px-3 py-1.5 text-slate-300 hover:bg-slate-800 hover:text-white rounded-lg transition-colors text-sm font-medium">
                 <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={icon} />

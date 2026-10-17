@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import MainMenu from './component/mainmenu';
-import { API_URL, apiFetch, readLogin, saveLogin, setLoggedOutHandler } from './api';
+import { API_URL, apiFetch, askOpenerForLogin, readLogin, saveLogin, setLoggedOutHandler } from './api';
 import './login.css';
 
 // The accounts app opens only after logging in with the admin email + password.
@@ -14,6 +14,12 @@ function LoginScreen({ onLogin }) {
   useEffect(() => {
     fetch(`${API_URL}/`).catch(() => {});
   }, []);
+
+  // Opened from the website admin: use its login instead of asking again
+  useEffect(() => askOpenerForLogin((login) => {
+    saveLogin(login);
+    onLogin(login);
+  }), [onLogin]);
 
   const submit = async (event) => {
     event.preventDefault();
