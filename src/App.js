@@ -78,7 +78,7 @@ function LoginScreen({ onLogin }) {
           </div>
         </div>
         <p>Log in to open the accounts.</p>
-        <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" autoFocus />
+        <input type="text" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" autoFocus />
         <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
         {error && <p className="sa-login-error">{error}</p>}
         <button type="submit" disabled={busy}>{busy ? 'Logging in…' : 'Log in'}</button>

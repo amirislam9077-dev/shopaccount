@@ -111,7 +111,7 @@ function PasswordScreen({ mode, initialEmail = '', onBack, onChanged }) {
     return (
       <form className="sa-login-card" onSubmit={changePassword}>
         {brand('Change Password', 'The new password also opens the Khurram Studio admin.')}
-        <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" />
+        <input type="text" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" />
         <input type="password" placeholder="Current password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} autoComplete="current-password" />
         {newPasswordFields}
         {footer('Change password')}
@@ -123,7 +123,7 @@ function PasswordScreen({ mode, initialEmail = '', onBack, onChanged }) {
     return (
       <form className="sa-login-card" onSubmit={sendCode}>
         {brand('Forgot Password', 'Enter the admin email. A 6-digit code will be emailed to it.')}
-        <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" autoFocus />
+        <input type="text" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" autoFocus />
         {footer('Send code')}
       </form>
     );
