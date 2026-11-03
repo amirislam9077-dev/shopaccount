@@ -78,7 +78,7 @@ export default function StockValue() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 px-4 py-2 border-b border-gray-200 bg-gray-50">
+      <div className="report-cards grid grid-cols-2 md:grid-cols-4 gap-2 px-4 py-2 border-b border-gray-200 bg-gray-50">
         {[
           ['Pieces in Stock', totalPcs, 'text-blue-700', `${inStockRows.length} designs in stock`],
           ['Stock Value (Cost)', Rs(totalCost), 'text-slate-600', 'At average purchase cost'],

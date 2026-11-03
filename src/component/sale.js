@@ -1,6 +1,6 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import React, { useState, useEffect, useRef } from 'react';
-import { fmtNum } from './format';
+import { fmtNum, findDuplicateDesign, titleCase } from './format';
 import JsBarcode from 'jsbarcode';
 import PhoneInput, { withContact, lookupPartyInfo } from './phoneinput';
 import SectionCard, { sectionIcons, FormHeader, formIcons } from './sectioncard';
@@ -429,7 +429,7 @@ function SaleDataEntry({ nextId, onSaved, sales, designs, purchases, onAddParty,
         discount: discount || 0,
         sale_total: saleTotal,
         design_code: designCode,
-        design_name: designName,
+        design_name: titleCase(designName),
         barcode: barcode,
         wholesale_rate: wsRate,
         phone_no: partyInfo.contact || null,
@@ -475,7 +475,7 @@ function SaleDataEntry({ nextId, onSaved, sales, designs, purchases, onAddParty,
 
   function submitNewParty() {
     if (!newParty.name.trim()) { alert('Please enter a party name'); return; }
-    const partyObj = { ...newParty, name: newParty.name.trim() };
+    const partyObj = { ...newParty, name: titleCase(newParty.name) };
     onAddParty(partyObj);
     set('partyName', partyObj.name);
     setPartyInfo({ contact: partyObj.contact, whatsapp: partyObj.whatsapp, facebook: partyObj.facebook, instagram: partyObj.instagram, address: partyObj.address });
@@ -486,11 +486,14 @@ function SaleDataEntry({ nextId, onSaved, sales, designs, purchases, onAddParty,
 
   function submitNewDesign() {
     if (!newDesign.name.trim()) { alert('Please enter a design name'); return; }
-    onAddDesign(newDesign.name.trim());
-    set('designName', newDesign.name.trim());
+    const designName = titleCase(newDesign.name);
+    const dup = findDuplicateDesign(designName, [...(designs || []), ...(purchases || []).map(p => p.designName)]);
+    if (dup) { alert(`This design is duplicate: "${dup}" already exists.\nPlease choose it from the list or use a different name.`); return; }
+    onAddDesign(designName);
+    set('designName', designName);
     setShowDesignModal(false);
     setNewDesign({ name: '', category: '', description: '' });
-    alert(`Design "${newDesign.name}" added successfully!`);
+    alert(`Design "${designName}" added successfully!`);
   }
 
   const inputCls = 'w-full px-2.5 py-1 border border-slate-500 rounded-md bg-slate-100 text-sm font-semibold text-gray-900 placeholder:font-normal placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-600 focus:bg-white transition-shadow';

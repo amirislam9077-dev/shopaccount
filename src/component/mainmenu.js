@@ -1,6 +1,6 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import React, { useState, useEffect, useRef } from 'react';
-import { fmtNum } from './format';
+import { fmtNum, findDuplicateDesign, titleCase, designKey } from './format';
 import JsBarcode from 'jsbarcode';
 import SaleEntry from './sale';
 import PartyLedger from './partyledger';
@@ -274,11 +274,23 @@ function PurchaseDataEntry({ nextId, onSaved, parties, designs, onAddParty, onDe
 
   // Renames the party / design in the database (all its purchases, and its payments or sales), then reloads
   async function submitRename() {
-    const newName = rename.value.trim();
+    let newName = titleCase(rename.value);
     if (!newName) { alert('Please enter a name'); return; }
     if (newName === rename.oldName) { setRename(null); return; }
     const list = rename.kind === 'party' ? allParties.map(p => p.name) : allDesigns;
-    if (list.includes(newName) && !window.confirm(`"${newName}" already exists. Its records will be joined with "${rename.oldName}". Continue?`)) return;
+    if (rename.kind === 'design') {
+      const dup = findDuplicateDesign(newName, allDesigns.filter(d => d !== rename.oldName));
+      if (dup) {
+        if (!window.confirm(`This design is duplicate: "${dup}" already exists.\nJoin "${rename.oldName}" into "${dup}"? All its purchases and sales move to "${dup}".`)) return;
+        newName = dup;
+      }
+    } else {
+      const dup = findDuplicateDesign(newName, list.filter(n => n !== rename.oldName));
+      if (dup) {
+        if (!window.confirm(`This party is duplicate: "${dup}" already exists.\nJoin "${rename.oldName}" into "${dup}"? All its purchases and payments move to "${dup}".`)) return;
+        newName = dup;
+      }
+    }
     setRenaming(true);
     try {
       const res = await apiFetch(`${API_URL}/api/rename/${rename.kind}`, {
@@ -379,12 +391,12 @@ function PurchaseDataEntry({ nextId, onSaved, parties, designs, onAddParty, onDe
         body: JSON.stringify({
           purchase_no: idNo,
           purchase_date: date,
-          party_name: partyName,
+          party_name: titleCase(partyName),
           challan_no: challanNo,
           pieces: parseFloat(pieces),
           wholesale_rate: parseFloat(wholeSaleRate),
           sale_rate: parseFloat(saleRate),
-          design_name: designName,
+          design_name: titleCase(designName),
           purchase_total: parseFloat(totalRs),
           barcode: barcode,
           design_code: designCode,
@@ -411,7 +423,9 @@ function PurchaseDataEntry({ nextId, onSaved, parties, designs, onAddParty, onDe
 
   function submitNewParty() {
     if (!newParty.name.trim()) { alert('Please enter a party name'); return; }
-    const party = { ...newParty, name: newParty.name.trim() };
+    const party = { ...newParty, name: titleCase(newParty.name) };
+    const dupParty = findDuplicateDesign(party.name, allParties.map(p => p.name));
+    if (dupParty) { alert(`This party is duplicate: "${dupParty}" already exists.\nPlease choose it from the list or use a different name.`); return; }
     onAddParty(party);
     set('partyName', party.name);
     setPartyInfo({ contact: party.contact || '', whatsapp: party.whatsapp || '', facebook: party.facebook || '', instagram: party.instagram || '', address: party.address || '' });
@@ -422,11 +436,14 @@ function PurchaseDataEntry({ nextId, onSaved, parties, designs, onAddParty, onDe
 
   function submitNewDesign() {
     if (!newDesign.name.trim()) { alert('Please enter a design name'); return; }
-    onAddDesign(newDesign.name.trim());
-    set('designName', newDesign.name.trim());
+    const designName = titleCase(newDesign.name);
+    const dup = findDuplicateDesign(designName, allDesigns);
+    if (dup) { alert(`This design is duplicate: "${dup}" already exists.\nPlease choose it from the list or use a different name.`); return; }
+    onAddDesign(designName);
+    set('designName', designName);
     setShowDesignModal(false);
     setNewDesign({ name: '', category: '', description: '' });
-    alert(`Design "${newDesign.name}" added successfully!`);
+    alert(`Design "${designName}" added successfully!`);
   }
 
   const inputCls = 'w-full px-2.5 py-1 border border-slate-500 rounded-md bg-slate-100 text-sm font-semibold text-gray-900 placeholder:font-normal placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-600 focus:bg-white transition-shadow';
@@ -594,6 +611,10 @@ function PurchaseDataEntry({ nextId, onSaved, parties, designs, onAddParty, onDe
                     <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>
+                  </button>
+                  <button type="button" title="Add new party" onClick={() => setShowPartyModal(true)}
+                    className="p-1 text-blue-600 hover:bg-blue-50 rounded border border-blue-200 transition-colors">
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" /></svg>
                   </button>
                 </div>
               </div>
@@ -1325,14 +1346,15 @@ function PaymentEntry({ parties, mode = 'party' }) {
   const [showPartyPayTypeModal, setShowPartyPayTypeModal] = useState(false);
   const [newPartyPayTypeName, setNewPartyPayTypeName] = useState('');
   const [expenseDescs, setExpenseDescs] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('expenseDescs')) || DEFAULT_EXPENSE_TYPES; }
+    // saved list is shown capitalised, with case-only duplicates ("shop" / "Shop") merged
+    try { return [...new Map((JSON.parse(localStorage.getItem('expenseDescs')) || DEFAULT_EXPENSE_TYPES).map(d => [designKey(d), titleCase(d)])).values()]; }
     catch { return DEFAULT_EXPENSE_TYPES; }
   });
   const [showExpenseDescModal, setShowExpenseDescModal] = useState(false);
   const [newExpenseDescName, setNewExpenseDescName] = useState('');
   const [addDescFromSelect, setAddDescFromSelect] = useState(false);
 
-  const emptyForm = () => ({ paymentId: '', date: today, paymentType: isExpense ? 'Expenses' : (partyPayTypes[0] || 'Party Payment'), partyName: isExpense ? 'Expenses' : '', bank: '', chequeNo: '', amount: '', remarks: '' });
+  const emptyForm = () => ({ paymentId: '', date: today, paymentType: isExpense ? 'Expenses' : 'Party Payment', partyName: isExpense ? 'Expenses' : '', payMode: 'Cash', bank: '', chequeNo: '', amount: '', remarks: '' });
 
   const [form, setForm]           = useState(emptyForm());
   const [payments, setPayments]   = useState([]);
@@ -1404,14 +1426,21 @@ function PaymentEntry({ parties, mode = 'party' }) {
     setAmountWords(n > 0 ? numberToWords(n) : '');
   }, [form.amount]);
 
-  const partyOptions = [...new Set([
+  // every party from purchases (saved ones, plus any added in the Purchase form this session)
+  // and from the payment party list; same name in another case is shown once
+  const partyOptions = [...new Map([
     ...purchaseParties,
+    ...(parties || []).map(p => p.name),
     ...payParties,
-  ].filter(Boolean))].sort();
+  ].filter(Boolean).map(n => [designKey(n), n])).values()].sort((a, b) => a.localeCompare(b));
 
   async function handleSave() {
     if (!isExpense && !form.partyName) return alert('Party Name is required');
     if (!form.amount || parseFloat(form.amount) <= 0) return alert('Amount is required');
+    if (form.payMode === 'Cheque') {
+      if (!needsCheque(form.bank)) return alert('Please select the bank for this cheque');
+      if (!String(form.chequeNo || '').trim()) return alert('Please enter the cheque number');
+    }
     const paymentId = form.paymentId || nextPayIdFromList(payments);
     setSaving(true);
     const body = {
@@ -1419,10 +1448,10 @@ function PaymentEntry({ parties, mode = 'party' }) {
       payment_date: form.date,
       payment_type: form.paymentType,
       party_name:   form.partyName,
-      bank:         form.bank,
-      cheque_no:    form.chequeNo,
+      bank:         form.payMode === 'Cash' ? 'Cash' : form.bank,
+      cheque_no:    form.payMode === 'Cash' ? '' : form.chequeNo,
       amount:       parseFloat(form.amount) || 0,
-      remarks:      form.remarks,
+      remarks:      isExpense ? titleCase(form.remarks) : form.remarks,   // expense description is a name: capitalised
     };
     try {
       if (editId) {
@@ -1446,10 +1475,11 @@ function PaymentEntry({ parties, mode = 'party' }) {
       date:        (p.payment_date || '').slice(0, 10),
       paymentType: p.payment_type || (isExpense ? '' : 'Party Payment'),
       partyName:   p.party_name,
+      payMode:     needsCheque(p.bank) ? 'Cheque' : 'Cash',
       bank:        p.bank || '',
       chequeNo:    p.cheque_no || '',
       amount:      p.amount,
-      remarks:     p.remarks || '',
+      remarks:     isExpense ? titleCase(p.remarks) : (p.remarks || ''),   // matches the capitalised description list
     });
   }
 
@@ -1466,7 +1496,9 @@ function PaymentEntry({ parties, mode = 'party' }) {
 
   function submitNewParty() {
     if (!newParty.name.trim()) return;
-    const p = { name: newParty.name.trim(), contact: newParty.contact, whatsapp: newParty.whatsapp };
+    const p = { name: titleCase(newParty.name), contact: newParty.contact, whatsapp: newParty.whatsapp };
+    const dupParty = findDuplicateDesign(p.name, partyOptions);
+    if (dupParty) { alert(`This party is duplicate: "${dupParty}" already exists.\nPlease choose it from the list or use a different name.`); return; }
     savePayParties([...payParties, p.name]);
     setForm(f => ({ ...f, partyName: p.name }));
     setNewParty({ name: '', contact: '', whatsapp: '' });
@@ -1496,8 +1528,10 @@ function PaymentEntry({ parties, mode = 'party' }) {
     localStorage.setItem('paymentParties', JSON.stringify(updated));
   }
   function addPayParty() {
-    const name = newPayPartyName.trim();
-    if (!name || payParties.includes(name)) return;
+    const name = titleCase(newPayPartyName);
+    if (!name) return;
+    const dupParty = findDuplicateDesign(name, partyOptions);
+    if (dupParty) { alert(`This party is duplicate: "${dupParty}" already exists.\nPlease choose it from the list or use a different name.`); return; }
     savePayParties([...payParties, name]);
     setNewPayPartyName('');
   }
@@ -1526,9 +1560,9 @@ function PaymentEntry({ parties, mode = 'party' }) {
     localStorage.setItem('expenseDescs', JSON.stringify(updated));
   }
   function addExpenseDesc() {
-    const name = newExpenseDescName.trim();
+    const name = titleCase(newExpenseDescName);
     if (!name) return;
-    if (!expenseDescs.includes(name)) saveExpenseDescs([...expenseDescs, name]);
+    if (!findDuplicateDesign(name, expenseDescs)) saveExpenseDescs([...expenseDescs, name]);
     setNewExpenseDescName('');
     // Opened via "+ Add New Description": pick the new entry and go straight back to the form
     if (addDescFromSelect) {
@@ -1619,7 +1653,7 @@ function PaymentEntry({ parties, mode = 'party' }) {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
           <div className="lg:col-span-2 space-y-2">
             <SectionCard title={isExpense ? 'Expense Details' : 'Payment Details'} accent="blue" icon={sectionIcons.sale}>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2">
+              <div className={`grid grid-cols-1 sm:grid-cols-2 ${isExpense ? 'lg:grid-cols-[1.1fr_1.3fr_1.8fr_1.8fr]' : 'lg:grid-cols-[1.1fr_1.3fr_2.6fr]'} gap-2`}>
                 <div>
                   <label className={lCls}>Payment ID</label>
                   <input className={iCls + ' bg-gray-100 text-gray-500'} value={form.paymentId} readOnly />
@@ -1642,9 +1676,9 @@ function PaymentEntry({ parties, mode = 'party' }) {
                       value={form.date} onChange={e => set('date', e.target.value)} />
                   </div>
                 </div>
-                <div className="lg:col-span-2">
-                  <label className={lCls}>Payment Type</label>
-                  {isExpense ? (
+                {isExpense && (
+                  <div>
+                    <label className={lCls}>Payment Type</label>
                     <div className="flex gap-1">
                       <select className={iCls} value={form.paymentType} onChange={e => set('paymentType', e.target.value)}>
                         <option value="">Select Type</option>
@@ -1653,19 +1687,10 @@ function PaymentEntry({ parties, mode = 'party' }) {
                       <button onClick={() => setShowTypeModal(true)}
                         className="px-2 py-1 bg-blue-500 text-white rounded-lg text-xs font-bold hover:bg-blue-600 whitespace-nowrap">⚙</button>
                     </div>
-                  ) : (
-                    <div className="flex gap-1">
-                      <select className={iCls} value={form.paymentType} onChange={e => set('paymentType', e.target.value)}>
-                        <option value="">Select Type</option>
-                        {partyPayTypes.map(t => <option key={t} value={t}>{t}</option>)}
-                      </select>
-                      <button onClick={() => setShowPartyPayTypeModal(true)}
-                        className="px-2 py-1 bg-blue-500 text-white rounded-lg text-xs font-bold hover:bg-blue-600 whitespace-nowrap">⚙</button>
-                    </div>
-                  )}
-                </div>
+                  </div>
+                )}
                 {!isExpense ? (
-                  <div className="lg:col-span-2">
+                  <div>
                     <label className={lCls}>Party Name</label>
                     <div className="flex gap-1">
                       <select className={iCls} value={form.partyName} onChange={e => set('partyName', e.target.value)}>
@@ -1677,7 +1702,7 @@ function PaymentEntry({ parties, mode = 'party' }) {
                     </div>
                   </div>
                 ) : (
-                  <div className="lg:col-span-2">
+                  <div>
                     <label className={lCls}>Expense Description</label>
                     <div className="flex gap-1">
                       <select className={iCls} value={form.remarks} onChange={e => {
@@ -1695,32 +1720,41 @@ function PaymentEntry({ parties, mode = 'party' }) {
                 )}
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 mt-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 mt-2">
                 <div>
-                  <label className={lCls}>Bank</label>
-                  <div className="flex gap-1">
-                    <select className={iCls} value={form.bank} onChange={e => {
-                      const bank = e.target.value;
-                      setForm(f => ({ ...f, bank, chequeNo: needsCheque(bank) ? f.chequeNo : '' }));
-                    }}>
-                      <option value="">Select Bank</option>
-                      {banks.map(b => <option key={b} value={b}>{b}</option>)}
-                    </select>
-                    <button onClick={() => setShowBankModal(true)}
-                      className="px-2 py-1 bg-blue-500 text-white rounded-lg text-xs font-bold hover:bg-blue-600 whitespace-nowrap">⚙</button>
+                  <label className={lCls}>Pay By</label>
+                  <div className="flex rounded-lg border border-slate-500 overflow-hidden">
+                    {['Cash', 'Cheque'].map(m => (
+                      <button key={m} type="button"
+                        onClick={() => setForm(f => ({ ...f, payMode: m, bank: m === 'Cash' ? '' : (needsCheque(f.bank) ? f.bank : ''), chequeNo: m === 'Cash' ? '' : f.chequeNo }))}
+                        className={`flex-1 py-1.5 text-sm font-bold transition-colors ${form.payMode === m ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>
+                        {m === 'Cash' ? '💵 Cash' : '🏦 Cheque'}
+                      </button>
+                    ))}
                   </div>
                 </div>
-                <div>
-                  <label className={lCls}>Cheque No</label>
-                  {needsCheque(form.bank) ? (
-                    <input className={iCls} value={form.chequeNo} onChange={e => set('chequeNo', e.target.value)} placeholder="Enter cheque number" />
-                  ) : (
-                    <input disabled className={iCls + ' bg-gray-200 border-gray-300 cursor-not-allowed'} value=""
-                      placeholder={form.bank ? 'Not needed for cash' : 'Select a bank first'} />
-                  )}
-                </div>
+                {/* bank and cheque details only exist for a cheque payment */}
+                {form.payMode === 'Cheque' && (
+                  <>
+                    <div>
+                      <label className={lCls}>Bank <span className="text-red-500">*</span></label>
+                      <div className="flex gap-1">
+                        <select className={iCls} value={form.bank} onChange={e => set('bank', e.target.value)}>
+                          <option value="">Select Bank</option>
+                          {banks.filter(needsCheque).map(b => <option key={b} value={b}>{b}</option>)}
+                        </select>
+                        <button onClick={() => setShowBankModal(true)}
+                          className="px-2 py-1 bg-blue-500 text-white rounded-lg text-xs font-bold hover:bg-blue-600 whitespace-nowrap">⚙</button>
+                      </div>
+                    </div>
+                    <div>
+                      <label className={lCls}>Cheque No <span className="text-red-500">*</span></label>
+                      <input className={iCls} value={form.chequeNo} onChange={e => set('chequeNo', e.target.value)} placeholder="Enter cheque number" />
+                    </div>
+                  </>
+                )}
                 {!isExpense && (
-                  <div>
+                  <div className={form.payMode === 'Cheque' ? '' : 'sm:col-span-1 lg:col-span-3'}>
                     <label className={lCls}>Remarks</label>
                     <input className={iCls} value={form.remarks} onChange={e => set('remarks', e.target.value)} placeholder="Notes / remarks..." />
                   </div>
@@ -2215,7 +2249,7 @@ function PurchaseReport() {
         <h2 className="text-xl font-bold text-gray-800 tracking-wide">Purchase Report</h2>
       </div>
       {/* ── summary cards ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 border-b border-gray-100">
+      <div className="report-cards grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 border-b border-gray-100">
         {summaryCards.map(([label, value, color, sub]) => (
           <div key={label} className="bg-white rounded-lg border border-gray-200 shadow-sm p-3">
             <p className="text-xs text-gray-500">{label}</p>
@@ -2226,7 +2260,7 @@ function PurchaseReport() {
       </div>
 
       {/* ── filters ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 px-4 py-3 border-b border-gray-100 bg-gray-50">
+      <div className="report-filters grid grid-cols-2 sm:grid-cols-5 gap-3 px-4 py-3 border-b border-gray-100 bg-gray-50">
         <div>
           <label className={lCls}>Date From</label>
           <div className="relative cursor-pointer" onClick={e => e.currentTarget.querySelector('input[type=date]').showPicker()}><input readOnly className={iCls + ' w-full cursor-pointer pointer-events-none'} value={dateFrom ? isoToDisplay(dateFrom) : ''} placeholder="dd/Mon/yy" /><input type="date" className="absolute opacity-0 w-0 h-0" value={dateFrom} onChange={e => setDateFrom(e.target.value)} /></div>
@@ -2580,7 +2614,7 @@ function PaymentReport() {
         <h2 className="text-xl font-bold text-gray-800 tracking-wide">Payment Report</h2>
       </div>
       {/* summary cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-4 border-b border-gray-100">
+      <div className="report-cards grid grid-cols-2 sm:grid-cols-3 gap-3 p-4 border-b border-gray-100">
         <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-3">
           <p className="text-xs text-gray-500">Total Payments</p>
           <p className="text-lg font-bold text-gray-800 mt-1">{filtered.length}</p>
@@ -2596,7 +2630,7 @@ function PaymentReport() {
       </div>
 
       {/* filters */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 px-4 py-3 border-b border-gray-100 bg-gray-50">
+      <div className="report-filters grid grid-cols-2 sm:grid-cols-5 gap-3 px-4 py-3 border-b border-gray-100 bg-gray-50">
         <div>
           <label className={lCls}>Date From</label>
           <div className="relative cursor-pointer" onClick={e => e.currentTarget.querySelector('input[type=date]').showPicker()}><input readOnly className={iCls + ' w-full cursor-pointer pointer-events-none'} value={dateFrom ? isoToDisplay(dateFrom) : ''} placeholder="dd/Mon/yy" /><input type="date" className="absolute opacity-0 w-0 h-0" value={dateFrom} onChange={e => setDateFrom(e.target.value)} /></div>
@@ -2981,7 +3015,7 @@ function SaleReport() {
         <span className="text-xs text-gray-500">{dateFrom ? isoToDisplay(dateFrom) : '…'} – {dateTo ? isoToDisplay(dateTo) : '…'}</span>
       </div>
       {/* ── summary cards ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 px-4 py-2 border-b border-gray-100">
+      <div className="report-cards grid grid-cols-2 sm:grid-cols-4 gap-2 px-4 py-2 border-b border-gray-100">
         {summaryCards.map(([label, value, color, sub]) => (
           <div key={label} className={`rounded-lg border shadow-sm px-3 py-1.5 ${label === 'Profit' ? 'bg-green-50 border-green-300' : 'bg-white border-gray-200'}`}>
             <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{label}</p>
@@ -2992,7 +3026,7 @@ function SaleReport() {
       </div>
 
       {/* ── filters ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 px-4 py-2 border-b border-gray-100 bg-gray-50">
+      <div className="report-filters grid grid-cols-2 sm:grid-cols-5 gap-2 px-4 py-2 border-b border-gray-100 bg-gray-50">
         <div>
           <label className={lCls}>Date From</label>
           <div className="relative cursor-pointer" onClick={e => e.currentTarget.querySelector('input[type=date]').showPicker()}><input readOnly className={iCls + ' w-full cursor-pointer pointer-events-none'} value={dateFrom ? isoToDisplay(dateFrom) : ''} placeholder="dd/Mon/yy" /><input type="date" className="absolute opacity-0 w-0 h-0" value={dateFrom} onChange={e => setDateFrom(e.target.value)} /></div>
@@ -3450,7 +3484,7 @@ function StockReport() {
         <h2 className="text-lg font-bold text-gray-800">Stock Ledger</h2>
       </div>
       {/* Header Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="report-cards grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
           { label: 'Purchase Pieces', value: totalPurPcs.toLocaleString(), color: 'blue' },
           { label: 'Sold Pieces', value: totalSalPcs.toLocaleString(), color: 'green' },
@@ -3465,7 +3499,7 @@ function StockReport() {
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+      <div className="report-filters flush bg-white rounded-lg shadow-sm border border-gray-200 p-4">
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 items-end">
           <div>
             <label className={lCls}>Date From</label>
@@ -4209,7 +4243,7 @@ function ProfitLossReport() {
       </div>
 
       {/* key figures */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2">
+      <div className="report-cards grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2">
         {[
           ['Net Sale', rs(revenue), 'text-gray-900', `${soldPcs} pcs sold`],
           ['Cost of Goods Sold', rs(cogs), 'text-slate-600', 'Wholesale cost of sold pieces'],
@@ -4422,7 +4456,7 @@ function SummaryReportForm({ products, parties }) {
   return (
     <div className="space-y-4">
       {/* Filter Section */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+      <div className="report-filters flush bg-white rounded-lg shadow-sm border border-gray-200 p-4">
         <h3 className="text-sm font-semibold text-gray-800 mb-3">Summary Report Filters</h3>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           <div>
@@ -4452,7 +4486,7 @@ function SummaryReportForm({ products, parties }) {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
+      <div className="report-cards grid grid-cols-1 md:grid-cols-6 gap-3">
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
           <div className="flex items-center justify-between">
             <div>

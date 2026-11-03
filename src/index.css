@@ -95,3 +95,60 @@ main table thead th input[type="checkbox"] { accent-color: #ffffff; }
 .theme-sale .scan-box input           { border-color: #0d9488 !important; }
 .theme-sale table thead th,
 .theme-sale table thead tr            { background-color: #0f766e !important; border-color: #115e59 !important; }
+
+/* ── Reports: highlighted summary cards and a clean filter bar ── */
+main .report-cards > div:not([class*="bg-green-50"]):not([class*="bg-red-50"]) {
+  background: linear-gradient(180deg, #eff6ff 0%, #ffffff 70%) !important;
+}
+main .report-cards > div {
+  border: 1px solid #bfdbfe !important;
+  border-top: 4px solid #1d4ed8 !important;
+  border-radius: 0.6rem !important;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08) !important;
+}
+main .report-cards > div p:first-child {
+  font-size: 11px !important; font-weight: 700 !important;
+  text-transform: uppercase; letter-spacing: 0.04em; color: #334155 !important;
+}
+main .report-cards > div p:nth-child(2) { font-size: 1.35rem !important; font-weight: 800 !important; }
+
+/* compact: cards take little height so the data table starts higher */
+main .report-cards { gap: 0.5rem !important; }
+main .report-cards.p-4 { padding: 0.5rem 1rem !important; }
+main .report-cards.py-3 { padding-top: 0.5rem !important; padding-bottom: 0.5rem !important; }
+main .report-cards > div { padding: 0.4rem 0.7rem !important; }
+main .report-cards > div p { margin-top: 0 !important; margin-bottom: 0 !important; line-height: 1.3 !important; }
+main .report-cards > div p:nth-child(2) { font-size: 1.1rem !important; white-space: nowrap; }
+main .report-cards[class*="grid-cols-6"] > div p:nth-child(2) { font-size: 1rem !important; }
+main .report-cards > div p:nth-child(n+3) { font-size: 10px !important; }
+/* the decorative icon squares only push the number onto a second line */
+main .report-cards > div .w-10.h-10 { display: none !important; }
+
+main .report-filters {
+  background: #ffffff !important;
+  margin: 0.5rem 1rem !important;
+  padding: 0.6rem 0.75rem !important;
+  border: 1px solid #cbd5e1 !important;
+  border-radius: 0.6rem !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+}
+main .report-filters label { font-size: 12px !important; font-weight: 700 !important; color: #1e293b !important; margin-bottom: 0.2rem !important; }
+main .report-filters input,
+main .report-filters select {
+  width: 100% !important;
+  height: 2.25rem !important;
+  padding: 0 0.6rem !important;
+  border: 1px solid #64748b !important;
+  border-radius: 0.4rem !important;
+  background-color: #f8fafc !important;
+  font-size: 0.85rem !important; font-weight: 600 !important; color: #0f172a !important;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+main .report-filters input::placeholder { font-weight: 400; color: #64748b; }
+main .report-filters input:focus,
+main .report-filters select:focus { outline: none; border-color: #2563eb !important; box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.25); background-color: #fff !important; }
+/* the hidden native date pickers sit inside the filter boxes; keep them hidden */
+main .report-filters input[type="date"].absolute { position: absolute !important; opacity: 0 !important; width: 0 !important; height: 0 !important; padding: 0 !important; border: 0 !important; }
+
+/* filter boxes that already sit in their own card keep their place */
+main .report-filters.flush { margin: 0 !important; }

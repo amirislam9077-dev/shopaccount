@@ -130,7 +130,7 @@ export default function PartyLedger() {
             {party ? 'Every purchase and payment for this party, with the running balance' : 'What each party has supplied, what they have been paid, and what is still owed'}
           </span>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 items-end">
+        <div className="report-filters flush grid grid-cols-1 sm:grid-cols-4 gap-2 items-end">
           <div className="sm:col-span-2">
             <label className={lCls}>Party</label>
             <select className={iCls} value={party} onChange={e => setParty(e.target.value)}>
@@ -197,7 +197,7 @@ export default function PartyLedger() {
       ) : (
         <>
           {/* ── party account summary ── */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 px-4 py-3 border-b border-gray-200 bg-gray-50">
+          <div className="report-cards grid grid-cols-2 md:grid-cols-4 gap-2 px-4 py-3 border-b border-gray-200 bg-gray-50">
             {[
               ['Opening Balance', <BalanceText value={opening} />, `Before ${dateFrom ? isoToDisplay(dateFrom) : 'start'}`],
               ['Purchased', <span className="text-gray-900">{Rs(periodPurchase)}</span>, `${ledger.filter(t => t.type === 'Purchase').length} purchases`],
