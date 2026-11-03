@@ -235,7 +235,7 @@ function PurchaseDataEntry({ nextId, onSaved, parties, designs, onAddParty, onDe
 
   // Merge designs from props with unique design names from products (purchase table)
   const designsFromPurchases = [...new Set((products || []).map(p => p.designName).filter(Boolean))];
-  const allDesigns = [...new Set([...designs, ...designsFromPurchases])];
+  const allDesigns = [...new Set([...designs, ...designsFromPurchases])].sort((a, b) => a.localeCompare(b));
   const [amountWords, setAmountWords] = useState('Zero Rupees Only');
   useEffect(() => {
     if (nextId) setForm(f => ({ ...f, idNo: nextId }));
@@ -1233,7 +1233,7 @@ function ProductTable({ products, onDelete, onReload, parties = [], designs = []
                 <div className="flex gap-1">
                   <select className={iCls} value={editForm.designName||''} onChange={e => setEditField('designName', e.target.value)}>
                     <option value="">Select Design</option>
-                    {[...new Set([...designs, ...products.map(p=>p.designName)].filter(Boolean))].map(name => (
+                    {[...new Set([...designs, ...products.map(p=>p.designName)].filter(Boolean))].sort((a, b) => a.localeCompare(b)).map(name => (
                       <option key={name} value={name}>{name}</option>
                     ))}
                   </select>

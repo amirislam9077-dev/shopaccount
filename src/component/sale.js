@@ -591,7 +591,7 @@ function SaleDataEntry({ nextId, onSaved, sales, designs, purchases, onAddParty,
                       onFocus={() => setShowHistory(h => ({ ...h, designName: true }))}
                       onBlur={() => setTimeout(() => setShowHistory(h => ({ ...h, designName: false })), 150)}>
                       <option value="">Select Design</option>
-                      {[...new Set([...designs, ...(purchases||[]).map(p=>p.designName)].filter(Boolean))].map(d => (
+                      {[...new Set([...designs, ...(purchases||[]).map(p=>p.designName)].filter(Boolean))].sort((a, b) => a.localeCompare(b)).map(d => (
                         <option key={d} value={d}>{d}</option>
                       ))}
                     </select>
@@ -1172,7 +1172,7 @@ function SaleTable({ sales, onDelete, onUpdate, onEdit, parties = [], designs = 
   }
 
   const allPartyNames = [...new Set([...parties.map(p => p.name), ...sales.map(s => s.party)].filter(Boolean))];
-  const allDesignNames = [...new Set([...designs, ...sales.map(s => s.designName)].filter(Boolean))];
+  const allDesignNames = [...new Set([...designs, ...sales.map(s => s.designName)].filter(Boolean))].sort((a, b) => a.localeCompare(b));
 
   return (
     <>
