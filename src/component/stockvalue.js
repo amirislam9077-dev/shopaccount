@@ -1,14 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { PagedTable } from './pager';
 import { API_URL, apiFetch } from '../api';
+import { designKey, supplierFinder } from './format';
 
 const API = API_URL;
 
 const Rs = n => 'Rs ' + Math.round(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
-// Sales get their design code from the customer name, so purchases and sales are matched by design name
-const keyOf = name => String(name || '').trim().toLowerCase();
 
-// What is on the shelf right now, per design, and what it is worth
+// What is on the shelf right now, per supplier + design, and what it is worth
 export default function StockValue() {
   const [purchases, setPurchases] = useState([]);
   const [sales, setSales]         = useState([]);
@@ -30,20 +29,25 @@ export default function StockValue() {
   if (loading) return <div className="p-12 text-center text-gray-400 text-sm">Loading...</div>;
 
   const designs = {};
+  const rowOf = (design, party) => {
+    const k = `${designKey(design)}|${designKey(party)}`;
+    return designs[k] || (designs[k] = { key: k, name: String(design).trim(), party, code: '', bought: 0, cost: 0, sold: 0, saleRate: 0 });
+  };
   [...purchases].sort((a, b) => a.id - b.id).forEach(p => {
-    const k = keyOf(p.design_name);
-    if (!k) return;
-    const d = designs[k] || (designs[k] = { name: p.design_name.trim(), code: '', bought: 0, cost: 0, sold: 0, saleRate: 0, parties: new Set() });
+    if (!designKey(p.design_name)) return;
+    const d = rowOf(p.design_name, p.party_name);
     const pcs = parseFloat(p.pieces) || 0;
     d.bought += pcs;
     d.cost += parseFloat(p.purchase_total) || pcs * (parseFloat(p.wholesale_rate) || 0);
     d.code = p.design_code || d.code;                       // latest purchase wins
     d.saleRate = parseFloat(p.sale_rate) || d.saleRate;
-    if (p.party_name) d.parties.add(p.party_name);
   });
+  // A sale goes to the supplier it came from; if that can't be told it is shown apart, never added to one of them
+  const supplierOf = supplierFinder(purchases.map(p => ({ party: p.party_name, design: p.design_name, designCode: p.design_code, barcode: p.barcode })));
+  const bought = new Set(purchases.map(p => designKey(p.design_name)));
   sales.forEach(s => {
-    const d = designs[keyOf(s.design_name)];
-    if (d) d.sold += parseFloat(s.sale_pieces) || 0;
+    if (!bought.has(designKey(s.design_name))) return;
+    rowOf(s.design_name, supplierOf({ design: s.design_name, designCode: s.design_code, barcode: s.barcode })).sold += parseFloat(s.sale_pieces) || 0;
   });
 
   const rows = Object.values(designs).map(d => {
@@ -56,7 +60,7 @@ export default function StockValue() {
   const q = search.trim().toLowerCase();
   const shown = rows.filter(r =>
     (!inStockOnly || r.inStock > 0) &&
-    (!q || [r.name, r.code, ...r.parties].some(v => String(v).toLowerCase().includes(q))));
+    (!q || [r.name, r.code, r.party].some(v => String(v).toLowerCase().includes(q))));
 
   const inStockRows = rows.filter(r => r.inStock > 0);
   const totalPcs    = inStockRows.reduce((a, r) => a + r.inStock, 0);
@@ -103,7 +107,7 @@ export default function StockValue() {
         </label>
         {oversold.length > 0 && (
           <span className="text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded px-2 py-1">
-            {oversold.length} design(s) show more sold than bought: {oversold.map(r => r.name).join(', ')}
+            {oversold.length} design(s) show more sold than bought: {oversold.map(r => `${r.name} (${r.party || 'supplier not known'})`).join(', ')}
           </span>
         )}
       </div>
@@ -113,6 +117,7 @@ export default function StockValue() {
           <tr>
             <th className={th}>#</th>
             <th className={th}>Design</th>
+            <th className={th}>Party</th>
             <th className={th}>Design Code</th>
             <th className={thR}>Bought</th>
             <th className={thR}>Sold</th>
@@ -125,12 +130,13 @@ export default function StockValue() {
         </thead>
         <tbody className="divide-y divide-gray-100">
           {shown.length === 0 && (
-            <tr><td colSpan={10} className="px-3 py-8 text-center text-gray-400 text-sm">No designs found</td></tr>
+            <tr><td colSpan={11} className="px-3 py-8 text-center text-gray-400 text-sm">No designs found</td></tr>
           )}
           {shown.map((r, i) => (
-            <tr key={r.name} className="hover:bg-blue-50">
+            <tr key={r.key} className="hover:bg-blue-50">
               <td className={td + ' text-gray-400'}>{i + 1}</td>
               <td className={td + ' font-semibold text-blue-700'}>{r.name}</td>
+              <td className={td + ' font-medium'}>{r.party || 'Supplier not known'}</td>
               <td className={td + ' text-gray-500'}>{r.code}</td>
               <td className={tdR}>{r.bought}</td>
               <td className={tdR}>{r.sold}</td>
@@ -145,7 +151,7 @@ export default function StockValue() {
         {shown.length > 0 && (
           <tfoot>
             <tr className="bg-gray-100 border-t-2 border-gray-300 font-bold">
-              <td className={td} colSpan={3}>TOTAL — {shown.length} designs</td>
+              <td className={td} colSpan={4}>TOTAL — {shown.length} designs</td>
               <td className={tdR}>{shown.reduce((a, r) => a + r.bought, 0)}</td>
               <td className={tdR}>{shown.reduce((a, r) => a + r.sold, 0)}</td>
               <td className={tdR + ' text-blue-700'}>{shown.reduce((a, r) => a + Math.max(0, r.inStock), 0)}</td>

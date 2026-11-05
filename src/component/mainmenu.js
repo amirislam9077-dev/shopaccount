@@ -1,6 +1,6 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import React, { useState, useEffect, useRef } from 'react';
-import { fmtNum, findDuplicateDesign, titleCase, designKey, nowTime, timeToDisplay, useClock, withTime } from './format';
+import { fmtNum, findDuplicateDesign, titleCase, designKey, nowTime, supplierFinder, timeToDisplay, useClock, withTime } from './format';
 import JsBarcode from 'jsbarcode';
 import SaleEntry from './sale';
 import PartyLedger from './partyledger';
@@ -239,6 +239,11 @@ function PurchaseDataEntry({ nextId, onSaved, parties, designs, onAddParty, onDe
   // Merge designs from props with unique design names from products (purchase table)
   const designsFromPurchases = [...new Set((products || []).map(p => p.designName).filter(Boolean))];
   const allDesigns = [...new Set([...designs, ...designsFromPurchases])].sort((a, b) => a.localeCompare(b));
+  // A party's design is added once: the ones it already has are listed first and cannot be chosen
+  const designKeysOf = party => new Set((products || []).filter(p => designKey(p.partyName) === designKey(party)).map(p => designKey(p.designName)));
+  const addedKeys = designKeysOf(form.partyName);
+  const addedDesigns = [...new Map(allDesigns.filter(d => addedKeys.has(designKey(d))).map(d => [designKey(d), d])).values()];
+  const freeDesigns = allDesigns.filter(d => !addedKeys.has(designKey(d)));
   const [amountWords, setAmountWords] = useState('Zero Rupees Only');
   useEffect(() => {
     if (nextId) setForm(f => ({ ...f, idNo: nextId }));
@@ -358,6 +363,11 @@ function PurchaseDataEntry({ nextId, onSaved, parties, designs, onAddParty, onDe
     if (val === '__add__') { setShowPartyModal(true); return; }
     set('partyName', val);
     setPartyInfo(lookupPartyInfo(val, parties, products));
+    // The chosen design may already be with the new party
+    if (form.designName && designKeysOf(val).has(designKey(form.designName))) {
+      showError('This design is already added', `${form.designName} from ${val}: choose another design`);
+      set('designName', '');
+    }
   }
 
   function handleDesignChange(val) {
@@ -412,7 +422,7 @@ function PurchaseDataEntry({ nextId, onSaved, parties, designs, onAddParty, onDe
         }),
       });
       const data = await res.json();
-      if (res.status === 409) { showError(data.error, `${designCode} is on ${data.usedBy}`); return; }
+      if (res.status === 409) { showError(data.error, data.detail); return; }
       if (!res.ok) throw new Error(data.error || 'Save failed');
       addToHistory('pieces', pieces);
       addToHistory('wholeSaleRate', wholeSaleRate);
@@ -528,59 +538,6 @@ function PurchaseDataEntry({ nextId, onSaved, parties, designs, onAddParty, onDe
               </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 mt-2">
-              {/* Design Name */}
-              <div className="relative lg:col-span-2">
-                <label className={labelCls}>Design Name</label>
-                <div className="flex items-center gap-1">
-                  <div className="relative flex-1">
-                    <select className={inputCls + ' appearance-none'} value={form.designName}
-                      onChange={e => handleDesignChange(e.target.value)}
-                      onFocus={() => setShowHistory(h => ({ ...h, designName: true }))}
-                      onBlur={() => setTimeout(() => setShowHistory(h => ({ ...h, designName: false })), 150)}>
-                      <option value="">Select Design</option>
-                      {allDesigns.map(d => <option key={d} value={d}>{d}</option>)}
-                    </select>
-                    <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-                      <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </div>
-                  </div>
-                  <button type="button" title="Edit design name" onClick={() => openRename('design')}
-                    className="p-1 text-slate-600 hover:text-blue-700 hover:bg-blue-50 rounded border border-slate-300 transition-colors">
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                  </button>
-                  <button type="button" title="Delete selected design"
-                    onClick={() => {
-                      if (!form.designName) { alert('Please select a design to delete'); return; }
-                      if (window.confirm(`Delete design "${form.designName}"?`)) {
-                        onDeleteDesign(form.designName);
-                        set('designName', '');
-                      }
-                    }}
-                    className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded border border-red-200 transition-colors">
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                  </button>
-                  <button type="button" title="Add new design" onClick={() => setShowDesignModal(true)}
-                    className="p-1 text-blue-600 hover:bg-blue-50 rounded border border-blue-200 transition-colors">
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" /></svg>
-                  </button>
-                </div>
-                {showHistory.designName && history.designName.length > 0 && (
-                  <div className="absolute z-30 left-0 right-0 top-full bg-white border border-gray-200 rounded shadow-lg">
-                    {history.designName.map((v, i) => (
-                      <div key={i} onClick={() => { set('designName', v); setShowHistory(h => ({ ...h, designName: false })); }}
-                        className="px-2 py-1 text-xs text-gray-700 hover:bg-blue-50 hover:text-blue-700 cursor-pointer flex items-center gap-1">
-                        <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                        {v}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
               {/* Party Name */}
               <div className="lg:col-span-2">
                 <label className={labelCls}>Party Name</label>
@@ -622,6 +579,66 @@ function PurchaseDataEntry({ nextId, onSaved, parties, designs, onAddParty, onDe
                     <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" /></svg>
                   </button>
                 </div>
+              </div>
+
+              {/* Design Name */}
+              <div className="relative lg:col-span-2">
+                <label className={labelCls}>Design Name</label>
+                <div className="flex items-center gap-1">
+                  <div className="relative flex-1">
+                    <select className={inputCls + ' appearance-none'} value={form.designName}
+                      onChange={e => handleDesignChange(e.target.value)}
+                      onFocus={() => setShowHistory(h => ({ ...h, designName: true }))}
+                      onBlur={() => setTimeout(() => setShowHistory(h => ({ ...h, designName: false })), 150)}>
+                      <option value="">Select Design</option>
+                      {addedDesigns.length > 0 && (
+                        <optgroup label={`Already added for ${form.partyName}`}>
+                          {addedDesigns.map(d => <option key={d} value={d} disabled>{d}</option>)}
+                        </optgroup>
+                      )}
+                      {addedDesigns.length > 0
+                        ? <optgroup label="Choose a design">{freeDesigns.map(d => <option key={d} value={d}>{d}</option>)}</optgroup>
+                        : freeDesigns.map(d => <option key={d} value={d}>{d}</option>)}
+                    </select>
+                    <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                      <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                  </div>
+                  <button type="button" title="Edit design name" onClick={() => openRename('design')}
+                    className="p-1 text-slate-600 hover:text-blue-700 hover:bg-blue-50 rounded border border-slate-300 transition-colors">
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                  </button>
+                  <button type="button" title="Delete selected design"
+                    onClick={() => {
+                      if (!form.designName) { alert('Please select a design to delete'); return; }
+                      if (window.confirm(`Delete design "${form.designName}"?`)) {
+                        onDeleteDesign(form.designName);
+                        set('designName', '');
+                      }
+                    }}
+                    className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded border border-red-200 transition-colors">
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                  <button type="button" title="Add new design" onClick={() => setShowDesignModal(true)}
+                    className="p-1 text-blue-600 hover:bg-blue-50 rounded border border-blue-200 transition-colors">
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" /></svg>
+                  </button>
+                </div>
+                {showHistory.designName && history.designName.length > 0 && (
+                  <div className="absolute z-30 left-0 right-0 top-full bg-white border border-gray-200 rounded shadow-lg">
+                    {history.designName.map((v, i) => (
+                      <div key={i} onClick={() => { set('designName', v); setShowHistory(h => ({ ...h, designName: false })); }}
+                        className="px-2 py-1 text-xs text-gray-700 hover:bg-blue-50 hover:text-blue-700 cursor-pointer flex items-center gap-1">
+                        <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        {v}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Wholesale Rate */}
@@ -1047,7 +1064,7 @@ function ProductTable({ products, onDelete, onReload, parties = [], designs = []
         }),
       });
       const data = await res.json();
-      if (res.status === 409) { showError(data.error, `${editForm.designCode} is on ${data.usedBy}`); return; }
+      if (res.status === 409) { showError(data.error, data.detail); return; }
       if (!res.ok) throw new Error(data.error || 'Update failed');
       closeEdit();
       onReload();
@@ -3311,11 +3328,11 @@ function SaleReport() {
 
 // ── stock report ─────────────────────────────────────────────────────────────
 
-function StockReport() {
+function StockReport({ initialTab = 'stock' }) {
   const [purchases, setPurchases] = useState([]);
   const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState('stock'); // stock | date | party | design | transactions
+  const [tab, setTab] = useState(initialTab); // stock | summary | date | party | design | transactions
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [partyFilter, setPartyFilter] = useState('');
@@ -3354,6 +3371,7 @@ function StockReport() {
         party: r.party_name,
         design: r.design_name,
         designCode: r.design_code,
+        barcode: r.barcode,
         pieces: parseFloat(r.sale_pieces) || 0,
         saleRate: parseFloat(r.sale_rate) || 0,
         discount: parseFloat(r.discount) || 0,
@@ -3486,8 +3504,37 @@ function StockReport() {
   const plTotalProfit   = plByDesign.reduce((a, d) => a + d.netProfit, 0);
   const plTotalMargin   = plTotalSalRev > 0 ? (plTotalProfit / plTotalSalRev * 100) : 0;
 
+  const ledgerGroups = (() => {
+    // One ledger per supplier + design: merge purchases+sales sorted by date, running balance.
+    // Every sale of the range goes to its supplier's ledger, so a filter on the supplier keeps the balance right.
+    const supplierOf = supplierFinder(purchases);
+    const designOk = d => !designFilter || designKey(d) === designKey(designFilter);
+    const groups = new Map();
+    const groupOf = (design, supplier) => {
+      const key = `${designKey(design)}|${designKey(supplier)}`;
+      if (!groups.has(key)) groups.set(key, { key, design, supplier, pur: [], sal: [] });
+      return groups.get(key);
+    };
+    purchases.filter(p => p.design && inRange(p.date) && designOk(p.design)).forEach(p => groupOf(p.design, p.party).pur.push(p));
+    sales.filter(s => s.design && inRange(s.date) && designOk(s.design)).forEach(s => groupOf(s.design, supplierOf(s)).sal.push(s));
+
+    const q = search.toLowerCase();
+    const hasText = v => String(v || '').toLowerCase().includes(q);
+    const rowWanted = r => (!partyFilter || r.party === partyFilter) && (!q || hasText(r.design) || hasText(r.designCode) || hasText(r.party));
+    return [...groups.values()].map(g => {
+      // a filter on this supplier or design shows its whole ledger; a customer shows only their own sales
+      const whole = (!partyFilter || designKey(g.supplier) === designKey(partyFilter))
+        && (!q || hasText(g.design) || hasText(g.supplier) || g.pur.some(p => hasText(p.designCode)));
+      return whole ? g : { ...g, pur: g.pur.filter(rowWanted), sal: g.sal.filter(rowWanted) };
+    }).filter(g => g.pur.length > 0 || g.sal.length > 0).sort((a, b) =>
+      designKey(a.design).localeCompare(designKey(b.design))
+      || (!a.supplier - !b.supplier)
+      || designKey(a.supplier).localeCompare(designKey(b.supplier)));
+  })();
+
   const tabs = [
     { id: 'stock', label: 'Stock Ledger' },
+    { id: 'summary', label: 'Stock Summary' },
     { id: 'date', label: 'Date Wise' },
     { id: 'party', label: 'Party Wise' },
     { id: 'design', label: 'Design Wise' },
@@ -3501,7 +3548,7 @@ function StockReport() {
     <div className="space-y-4">
       {/* Heading */}
       <div className="px-1 pt-2">
-        <h2 className="text-lg font-bold text-gray-800">Stock Ledger</h2>
+        <h2 className="text-lg font-bold text-gray-800">{tab === 'summary' ? 'Stock Summary' : 'Stock Ledger'}</h2>
       </div>
       {/* Header Cards */}
       <div className="report-cards grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -3564,23 +3611,15 @@ function StockReport() {
         <div className="overflow-x-auto">
           {/* ── Stock Ledger tab ── */}
           {tab === 'stock' && (() => {
-            // Build per-design ledger: merge purchases+sales sorted by date, running balance
-            const ledgerDesigns = [...new Set([
-              ...filteredPur.map(p => p.design),
-              ...filteredSal.map(s => s.design),
-            ].filter(Boolean))].sort();
-
             let grandTotPurPcs = 0, grandTotSalPcs = 0, grandTotPurAmt = 0, grandTotSalAmt = 0;
 
             return (
               <div className="divide-y divide-gray-300">
-                {ledgerDesigns.length === 0 && (
+                {ledgerGroups.length === 0 && (
                   <div className="px-3 py-8 text-center text-gray-400 text-xs">No stock data found</div>
                 )}
-                {ledgerDesigns.map(design => {
-                  const dPur = filteredPur.filter(p => p.design === design);
-                  const dSal = filteredSal.filter(s => s.design === design);
-                  const purInfo = purchases.find(p => p.design === design);
+                {ledgerGroups.map(({ key, design, supplier, pur: dPur, sal: dSal }) => {
+                  const purInfo = purchases.find(p => designKey(p.design) === designKey(design) && designKey(p.party) === designKey(supplier));
                   const wsRate   = purInfo?.wsRate   || 0;
                   const saleRate = purInfo?.saleRate  || 0;
                   const designCode = purInfo?.designCode || dSal[0]?.designCode || '';
@@ -3614,10 +3653,11 @@ function StockReport() {
                   grandTotSalAmt += totSalAmt;
 
                   return (
-                    <div key={design} className="mb-1">
-                      {/* Design header */}
+                    <div key={key} className="mb-1">
+                      {/* Supplier + design header */}
                       <div className="flex items-center gap-3 px-3 py-2 bg-gray-800 text-white">
                         <span className="font-bold text-sm">{design}</span>
+                        <span className="stock-supplier text-xs font-bold bg-white text-gray-900 rounded px-2 py-0.5">{supplier || 'Supplier not known'}</span>
                         <span className="text-gray-400 text-xs">{designCode}</span>
                         <span className="ml-2 text-xs bg-blue-700 rounded px-2 py-0.5">W/S Rs {fmtNum(wsRate)}</span>
                         <span className="text-xs bg-green-700 rounded px-2 py-0.5">Sale Rs {fmtNum(saleRate)}</span>
@@ -3696,7 +3736,7 @@ function StockReport() {
                   );
                 })}
                 {/* Grand Total */}
-                {ledgerDesigns.length > 0 && (
+                {ledgerGroups.length > 0 && (
                   <div className="px-3 py-2 bg-gray-900 text-white flex gap-6 text-xs font-bold">
                     <span>GRAND TOTAL</span>
                     <span className="text-blue-300">IN: {grandTotPurPcs} pcs · Rs {fmtNum(grandTotPurAmt)}</span>
@@ -3993,6 +4033,73 @@ function StockReport() {
               )}
             </table></PagedTable>
           )}
+
+          {/* ── Stock Summary tab: each party's designs, the pieces it gave, what sold and the balance ── */}
+          {tab === 'summary' && (() => {
+            const sum = (rows, field) => rows.reduce((a, r) => a + r[field], 0);
+            const rollUp = rows => ({ purPcs: sum(rows, 'purPcs'), purAmt: sum(rows, 'purAmt'), salPcs: sum(rows, 'salPcs'), salAmt: sum(rows, 'salAmt'), balance: sum(rows, 'balance') });
+            const byParty = new Map();
+            ledgerGroups.forEach(g => {
+              const k = designKey(g.supplier);
+              if (!byParty.has(k)) byParty.set(k, { key: k, party: g.supplier || 'Supplier not known', known: Boolean(g.supplier), designs: [] });
+              const purPcs = sum(g.pur, 'pieces'), salPcs = sum(g.sal, 'pieces');
+              byParty.get(k).designs.push({ key: g.key, design: g.design, purPcs, purAmt: sum(g.pur, 'total'), salPcs, salAmt: sum(g.sal, 'total'), balance: purPcs - salPcs });
+            });
+            const parties = [...byParty.values()].sort((a, b) => (b.known - a.known) || a.party.localeCompare(b.party));
+            const grand = rollUp(parties.flatMap(p => p.designs));
+            const balanceCls = n => (n > 0 ? 'text-blue-700' : n < 0 ? 'text-red-600' : 'text-gray-400');
+            const figures = (t, weight = 'font-semibold') => (
+              <>
+                <td className={`${tdCls} text-blue-700 ${weight} text-center`}>{t.purPcs}</td>
+                <td className={`${tdCls} text-blue-700 ${weight} text-right`}>Rs {fmtNum(t.purAmt)}</td>
+                <td className={`${tdCls} text-green-700 ${weight} text-center`}>{t.salPcs}</td>
+                <td className={`${tdCls} text-green-700 ${weight} text-right`}>Rs {fmtNum(t.salAmt)}</td>
+                <td className={`${tdCls} ${balanceCls(t.balance)} font-bold text-center`}>{t.balance}</td>
+              </>
+            );
+            return (
+              <PagedTable><table className="min-w-full stock-summary">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    {['#', 'Party', 'Design Name', 'Pieces Given', 'Purchase Amount', 'Pieces Sold', 'Sale Amount', 'Stock Balance'].map(h => (
+                      <th key={h} className={thCls}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {parties.length === 0 && (
+                    <tr><td colSpan={8} className="px-3 py-8 text-center text-gray-400 text-xs">No stock data found</td></tr>
+                  )}
+                  {parties.map((p, i) => (
+                    <React.Fragment key={p.key}>
+                      <tr className="bg-slate-100">
+                        <td className={tdCls + ' text-gray-500 font-bold'}>{i + 1}</td>
+                        <td className={tdCls + ' font-bold text-gray-900'}>{p.party}</td>
+                        <td className={tdCls + ' font-bold text-gray-900'}>All designs ({p.designs.length})</td>
+                        {figures(rollUp(p.designs), 'font-bold')}
+                      </tr>
+                      {p.designs.map(d => (
+                        <tr key={d.key} className="hover:bg-blue-50">
+                          <td className={tdCls}></td>
+                          <td className={tdCls + ' text-gray-500'}>{p.party}</td>
+                          <td className={tdCls + ' font-medium'}>{d.design}</td>
+                          {figures(d)}
+                        </tr>
+                      ))}
+                    </React.Fragment>
+                  ))}
+                </tbody>
+                {parties.length > 0 && (
+                  <tfoot className="bg-gray-100 border-t-2 border-gray-300">
+                    <tr>
+                      <td colSpan={3} className={tdCls + ' font-bold text-gray-700'}>GRAND TOTAL — {parties.length} parties</td>
+                      {figures(grand, 'font-bold')}
+                    </tr>
+                  </tfoot>
+                )}
+              </table></PagedTable>
+            );
+          })()}
 
           {/* ── All Transactions tab ── */}
           {tab === 'transactions' && (
@@ -4703,6 +4810,7 @@ export default function MainMenu() {
     'sales-report':        ['All Reports', 'Sales Report'],
     'payment-report':      ['All Reports', 'Payment Report'],
     'stock-ledger':        ['Reports', 'Stock Ledger'],
+    'stock-summary':       ['Reports', 'Stock Summary'],
     'stock-value':         ['Reports', 'Stock Value'],
     'stock-vs-payable':    ['Reports', 'Stock vs Dues'],
     'party-ledger':        ['Reports', 'Party Ledger'],
@@ -4818,7 +4926,8 @@ export default function MainMenu() {
       case 'purchase-report': return <PurchaseReport />;
       case 'sales-report': return <SaleReport />;
       case 'payment-report': return <PaymentReport />;
-      case 'stock-ledger': return <StockReport />;
+      case 'stock-ledger': return <StockReport key="stock-ledger" />;
+      case 'stock-summary': return <StockReport key="stock-summary" initialTab="summary" />;
       case 'stock-value': return <StockValue />;
       case 'stock-vs-payable': return <StockVsPayable />;
       case 'party-ledger': return <PartyLedger />;
@@ -4891,6 +5000,7 @@ export default function MainMenu() {
             </NavItem>
 
             <NavItem icon={navIcons.stockLedger} label="Stock Ledger" active={activeView === 'stock-ledger'} onClick={() => go('stock-ledger')} />
+            <NavItem icon={navIcons.stockLedger} label="Stock Summary" active={activeView === 'stock-summary'} onClick={() => go('stock-summary')} />
             <NavItem icon={navIcons.stockValue} label="Stock Value" active={activeView === 'stock-value'} onClick={() => go('stock-value')} />
             <NavItem icon={navIcons.stockVsPayable} label="Stock vs Dues" active={activeView === 'stock-vs-payable'} onClick={() => go('stock-vs-payable')} />
             <NavItem icon={navIcons.partyLedger} label="Party Ledger" active={activeView === 'party-ledger'} onClick={() => go('party-ledger')} />

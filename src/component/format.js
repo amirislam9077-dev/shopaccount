@@ -33,3 +33,25 @@ export function useClock() {
   }, []);
   return clock;
 }
+
+// Stock is kept per supplier + design. A sale's party is the customer, so its supplier comes from
+// what it sold: the purchase with its barcode, then its design code, then the design's only supplier.
+// purchases: [{ party, design, designCode, barcode }]. Returns sale => supplier name, or '' when unknown.
+export function supplierFinder(purchases) {
+  const add = (map, key, party) => {
+    if (!key || !party) return;
+    if (!map.has(key)) map.set(key, new Map());
+    map.get(key).set(designKey(party), party);
+  };
+  const byBarcode = new Map(), byCode = new Map(), byDesign = new Map();
+  purchases.forEach(p => {
+    add(byBarcode, designKey(p.barcode), p.party);
+    add(byCode, designKey(p.designCode), p.party);
+    add(byDesign, designKey(p.design), p.party);
+  });
+  const only = (map, key) => {
+    const parties = map.get(key);
+    return parties && parties.size === 1 ? [...parties.values()][0] : '';
+  };
+  return sale => only(byBarcode, designKey(sale.barcode)) || only(byCode, designKey(sale.designCode)) || only(byDesign, designKey(sale.design));
+}

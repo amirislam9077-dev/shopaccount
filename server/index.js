@@ -206,13 +206,25 @@ async function designCodeUsedBy(code, exceptId = 0) {
   );
   return rows[0] ? rows[0].purchase_no : null;
 }
-const DESIGN_CODE_USED = 'This design code is already used';
+// One party's design is added once. The purchase number that already has it, or null.
+async function partyDesignUsedBy(party, design, exceptId = 0) {
+  const [rows] = await db.query(
+    'SELECT purchase_no FROM purchase WHERE LOWER(TRIM(party_name)) = LOWER(TRIM(?)) AND LOWER(TRIM(design_name)) = LOWER(TRIM(?)) AND id <> ? LIMIT 1',
+    [party, design, exceptId]
+  );
+  return rows[0] ? rows[0].purchase_no : null;
+}
+const sameValue = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+const designAdded = (design, party, usedBy) => ({ error: 'This design is already added', detail: `${design} from ${party} is on ${usedBy}` });
+const codeUsed = (code, usedBy) => ({ error: 'This design code is already used', detail: `${code} is on ${usedBy}` });
 
 app.post('/api/purchases', async (req, res) => {
   const { purchase_no, purchase_date, purchase_time, party_name, challan_no, pieces, wholesale_rate, sale_rate, design_name, purchase_total, barcode, design_code, phone_no, whatsapp, facebook_id, instagram, address } = req.body;
   try {
-    const usedBy = await designCodeUsedBy(design_code);
-    if (usedBy) return res.status(409).json({ error: DESIGN_CODE_USED, usedBy });
+    const designOn = await partyDesignUsedBy(party_name, design_name);
+    if (designOn) return res.status(409).json(designAdded(design_name, party_name, designOn));
+    const codeOn = await designCodeUsedBy(design_code);
+    if (codeOn) return res.status(409).json(codeUsed(design_code, codeOn));
     const [result] = await db.query(
       `INSERT INTO purchase (purchase_no, purchase_date, purchase_time, party_name, challan_no, pieces, wholesale_rate, sale_rate, design_name, purchase_total, barcode, design_code, phone_no, whatsapp, facebook_id, instagram, address)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -276,11 +288,13 @@ app.put('/api/purchases/sale-rate', async (req, res) => {
 app.put('/api/purchases/:id', async (req, res) => {
   const { purchase_no, purchase_date, party_name, challan_no, pieces, wholesale_rate, sale_rate, design_name, purchase_total, barcode, design_code, phone_no, whatsapp, facebook_id, instagram, address } = req.body;
   try {
-    // Older purchases can share a code: an edit is only refused when it changes to a code in use
-    const [[current]] = await db.query('SELECT design_code FROM purchase WHERE id = ?', [req.params.id]);
-    const sameCode = String(current?.design_code || '').trim().toLowerCase() === String(design_code || '').trim().toLowerCase();
-    const usedBy = sameCode ? null : await designCodeUsedBy(design_code, req.params.id);
-    if (usedBy) return res.status(409).json({ error: DESIGN_CODE_USED, usedBy });
+    // Older purchases can repeat a design or code: an edit is only refused when it changes to one in use
+    const [[current]] = await db.query('SELECT party_name, design_name, design_code FROM purchase WHERE id = ?', [req.params.id]);
+    const samePair = sameValue(current?.party_name, party_name) && sameValue(current?.design_name, design_name);
+    const designOn = samePair ? null : await partyDesignUsedBy(party_name, design_name, req.params.id);
+    if (designOn) return res.status(409).json(designAdded(design_name, party_name, designOn));
+    const codeOn = sameValue(current?.design_code, design_code) ? null : await designCodeUsedBy(design_code, req.params.id);
+    if (codeOn) return res.status(409).json(codeUsed(design_code, codeOn));
     await db.query(
       `UPDATE purchase SET purchase_no=?, purchase_date=?, party_name=?, challan_no=?, pieces=?, wholesale_rate=?, sale_rate=?, design_name=?, purchase_total=?, barcode=?, design_code=?, phone_no=?, whatsapp=?, facebook_id=?, instagram=?, address=?
        WHERE id = ?`,
