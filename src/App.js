@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import MainMenu from './component/mainmenu';
 import { API_URL, apiFetch, readLogin, saveLogin, setLoggedOutHandler } from './api';
 import PasswordScreen from './password';
+import Toaster from './component/toast';
 import './login.css';
 
 // The accounts app opens only after logging in with the admin email + password.
@@ -93,7 +94,12 @@ function App() {
   if (!login) {
     return <LoginScreen onLogin={setLogin} />;
   }
-  return <MainMenu />;
+  return (
+    <>
+      <MainMenu />
+      <Toaster />
+    </>
+  );
 }
 
 export default App;

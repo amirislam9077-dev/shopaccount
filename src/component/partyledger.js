@@ -1,6 +1,6 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import React, { useState, useEffect } from 'react';
-import { fmtNum } from './format';
+import { fmtNum, withTime } from './format';
 import { REPORT_START_DATE } from './reportexport';
 import { PagedTable } from './pager';
 import { API_URL, apiFetch } from '../api';
@@ -52,6 +52,7 @@ export default function PartyLedger() {
         id:     r.id,
         type:   'Purchase',
         date:   localDate(r.purchase_date),
+        time:   r.purchase_time,
         refNo:  r.purchase_no || '',
         party:  r.party_name,
         phone:  r.phone_no || '',
@@ -63,6 +64,7 @@ export default function PartyLedger() {
         id:     r.id,
         type:   'Payment',
         date:   localDate(r.payment_date),
+        time:   r.payment_time,
         refNo:  r.payment_id || '',
         party:  r.party_name,
         paymentType: r.payment_type || '',
@@ -216,7 +218,7 @@ export default function PartyLedger() {
           <PagedTable><table className="w-full">
             <thead>
               <tr>
-                <th className={th}>Date</th>
+                <th className={th}>Date &amp; Time</th>
                 <th className={th}>Entry</th>
                 <th className={th}>Ref No</th>
                 <th className={th}>Details</th>
@@ -238,7 +240,7 @@ export default function PartyLedger() {
               )}
               {ledger.map(t => (
                 <tr key={t.type + t.id} className="hover:bg-blue-50">
-                  <td className={td + ' whitespace-nowrap text-gray-700'}>{isoToDisplay(t.date)}</td>
+                  <td className={td + ' whitespace-nowrap text-gray-700'}>{withTime(isoToDisplay(t.date), t.time)}</td>
                   <td className={td}>
                     <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${t.type === 'Purchase' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'}`}>{t.type}</span>
                   </td>

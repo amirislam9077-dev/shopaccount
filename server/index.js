@@ -38,6 +38,7 @@ const db = mysql.createPool({
   database: process.env.DB_NAME || 'shopaccount',
   waitForConnections: true,
   connectionLimit: 10,
+  dateStrings: ['DATE'],   // a date stays "2026-11-05"; otherwise the server's time zone can shift it a day
   ...sslConfig(),
 });
 
@@ -133,6 +134,9 @@ async function createSaleTable() {
       `ALTER TABLE sale ADD COLUMN discount_rs DECIMAL(10,2) DEFAULT 0 AFTER discount`,
       `ALTER TABLE sale ADD COLUMN wholesale_rate DECIMAL(10,2) DEFAULT 0 AFTER discount_rs`,
       `ALTER TABLE sale ADD COLUMN profit DECIMAL(10,2) DEFAULT 0 AFTER wholesale_rate`,
+      `ALTER TABLE sale ADD COLUMN sale_time TIME NULL AFTER sale_date`,
+      `ALTER TABLE purchase ADD COLUMN purchase_time TIME NULL AFTER purchase_date`,
+      `ALTER TABLE paymenyt ADD COLUMN payment_time TIME NULL AFTER payment_date`,
     ];
     // Add contact fields to purchase table
     const alterPurchase = [
@@ -190,13 +194,29 @@ app.get('/api/purchases/:id', async (req, res) => {
 });
 
 // ── POST create purchase ──────────────────────────────────────────────────────
+// Entry time sent by the app (the shop's own clock); anything else is not stored
+const validTime = time => (/^\d{2}:\d{2}:\d{2}$/.test(time) ? time : null);
+
+// A design code belongs to one purchase. The purchase number using it, or null when it is free.
+async function designCodeUsedBy(code, exceptId = 0) {
+  if (!String(code || '').trim()) return null;
+  const [rows] = await db.query(
+    'SELECT purchase_no FROM purchase WHERE LOWER(TRIM(design_code)) = LOWER(TRIM(?)) AND id <> ? LIMIT 1',
+    [code, exceptId]
+  );
+  return rows[0] ? rows[0].purchase_no : null;
+}
+const DESIGN_CODE_USED = 'This design code is already used';
+
 app.post('/api/purchases', async (req, res) => {
-  const { purchase_no, purchase_date, party_name, challan_no, pieces, wholesale_rate, sale_rate, design_name, purchase_total, barcode, design_code, phone_no, whatsapp, facebook_id, instagram, address } = req.body;
+  const { purchase_no, purchase_date, purchase_time, party_name, challan_no, pieces, wholesale_rate, sale_rate, design_name, purchase_total, barcode, design_code, phone_no, whatsapp, facebook_id, instagram, address } = req.body;
   try {
+    const usedBy = await designCodeUsedBy(design_code);
+    if (usedBy) return res.status(409).json({ error: DESIGN_CODE_USED, usedBy });
     const [result] = await db.query(
-      `INSERT INTO purchase (purchase_no, purchase_date, party_name, challan_no, pieces, wholesale_rate, sale_rate, design_name, purchase_total, barcode, design_code, phone_no, whatsapp, facebook_id, instagram, address)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [purchase_no, purchase_date, party_name, challan_no, pieces, wholesale_rate, sale_rate, design_name, purchase_total, barcode, design_code, phone_no||null, whatsapp||null, facebook_id||null, instagram||null, address||null]
+      `INSERT INTO purchase (purchase_no, purchase_date, purchase_time, party_name, challan_no, pieces, wholesale_rate, sale_rate, design_name, purchase_total, barcode, design_code, phone_no, whatsapp, facebook_id, instagram, address)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [purchase_no, purchase_date, validTime(purchase_time), party_name, challan_no, pieces, wholesale_rate, sale_rate, design_name, purchase_total, barcode, design_code, phone_no||null, whatsapp||null, facebook_id||null, instagram||null, address||null]
     );
     res.json({ id: result.insertId, message: 'Purchase saved successfully' });
   } catch (err) {
@@ -256,6 +276,11 @@ app.put('/api/purchases/sale-rate', async (req, res) => {
 app.put('/api/purchases/:id', async (req, res) => {
   const { purchase_no, purchase_date, party_name, challan_no, pieces, wholesale_rate, sale_rate, design_name, purchase_total, barcode, design_code, phone_no, whatsapp, facebook_id, instagram, address } = req.body;
   try {
+    // Older purchases can share a code: an edit is only refused when it changes to a code in use
+    const [[current]] = await db.query('SELECT design_code FROM purchase WHERE id = ?', [req.params.id]);
+    const sameCode = String(current?.design_code || '').trim().toLowerCase() === String(design_code || '').trim().toLowerCase();
+    const usedBy = sameCode ? null : await designCodeUsedBy(design_code, req.params.id);
+    if (usedBy) return res.status(409).json({ error: DESIGN_CODE_USED, usedBy });
     await db.query(
       `UPDATE purchase SET purchase_no=?, purchase_date=?, party_name=?, challan_no=?, pieces=?, wholesale_rate=?, sale_rate=?, design_name=?, purchase_total=?, barcode=?, design_code=?, phone_no=?, whatsapp=?, facebook_id=?, instagram=?, address=?
        WHERE id = ?`,
@@ -289,16 +314,16 @@ app.get('/api/sales', async (req, res) => {
 
 // ── POST create sale ──────────────────────────────────────────────────────────
 app.post('/api/sales', async (req, res) => {
-  const { sale_id, sale_date, party_name, sale_pieces, sale_rate, discount, sale_total, design_code, design_name, barcode, phone_no, whatsapp, facebook_id, instagram, address, wholesale_rate } = req.body;
+  const { sale_id, sale_date, sale_time, party_name, sale_pieces, sale_rate, discount, sale_total, design_code, design_name, barcode, phone_no, whatsapp, facebook_id, instagram, address, wholesale_rate } = req.body;
   const gross = (parseFloat(sale_pieces) || 0) * (parseFloat(sale_rate) || 0);
   const discount_rs = gross * (parseFloat(discount) || 0) / 100;
   const ws = parseFloat(wholesale_rate) || 0;
   const profit = (parseFloat(sale_total) || 0) - (parseFloat(sale_pieces) || 0) * ws;
   try {
     const [result] = await db.query(
-      `INSERT INTO sale (sale_id, sale_date, party_name, sale_pieces, sale_rate, discount, discount_rs, wholesale_rate, profit, sale_total, design_code, design_name, barcode, phone_no, whatsapp, facebook_id, instagram, address)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [sale_id, sale_date, party_name, sale_pieces, sale_rate, discount, discount_rs, ws, profit, sale_total, design_code, design_name, barcode, phone_no, whatsapp, facebook_id, instagram, address]
+      `INSERT INTO sale (sale_id, sale_date, sale_time, party_name, sale_pieces, sale_rate, discount, discount_rs, wholesale_rate, profit, sale_total, design_code, design_name, barcode, phone_no, whatsapp, facebook_id, instagram, address)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [sale_id, sale_date, validTime(sale_time), party_name, sale_pieces, sale_rate, discount, discount_rs, ws, profit, sale_total, design_code, design_name, barcode, phone_no, whatsapp, facebook_id, instagram, address]
     );
     res.json({ id: result.insertId, message: 'Sale saved successfully' });
   } catch (err) {
@@ -347,12 +372,12 @@ app.get('/api/payments', async (_req, res) => {
 
 // ── POST create payment ───────────────────────────────────────────────────────
 app.post('/api/payments', async (req, res) => {
-  const { payment_id, payment_date, payment_type, party_name, bank, cheque_no, amount, remarks } = req.body;
+  const { payment_id, payment_date, payment_time, payment_type, party_name, bank, cheque_no, amount, remarks } = req.body;
   try {
     const [result] = await db.query(
-      `INSERT INTO paymenyt (payment_id, payment_date, payment_type, party_name, bank, cheque_no, amount, remarks)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [payment_id, payment_date, payment_type||null, party_name, bank||null, cheque_no||null, amount, remarks||null]
+      `INSERT INTO paymenyt (payment_id, payment_date, payment_time, payment_type, party_name, bank, cheque_no, amount, remarks)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [payment_id, payment_date, validTime(payment_time), payment_type||null, party_name, bank||null, cheque_no||null, amount, remarks||null]
     );
     res.json({ id: result.insertId, message: 'Payment saved successfully' });
   } catch (err) {

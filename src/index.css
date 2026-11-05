@@ -73,11 +73,14 @@ main table thead th input[type="checkbox"] { accent-color: #ffffff; }
   box-shadow: 0 0 0 2px rgba(147, 197, 253, 0.6) !important;
 }
 
+/* Every data entry's save button is red, on every page */
+.form-save                { background-color: #dc2626 !important; }   /* red-600 */
+.form-save:hover          { background-color: #b91c1c !important; }
+.form-save:disabled       { background-color: #fca5a5 !important; opacity: 1; }
+
 /* ── Page colours: Purchase = blue, Sales = teal, so it is clear at a glance which page is open ── */
 .theme-purchase .section-head,
 .theme-purchase .form-icon            { background-color: #1e40af !important; }   /* blue-800 */
-.theme-purchase .form-save            { background-color: #2563eb !important; }   /* blue-600 */
-.theme-purchase .form-save:hover      { background-color: #1d4ed8 !important; }
 .theme-purchase .section-highlight    { border-color: #60a5fa !important; }        /* blue-400 */
 .theme-purchase .section-highlight .section-body { background-color: rgba(239, 246, 255, 0.6) !important; }
 .theme-purchase main table thead th,
@@ -86,8 +89,6 @@ main table thead th input[type="checkbox"] { accent-color: #ffffff; }
 
 .theme-sale .section-head,
 .theme-sale .form-icon                { background-color: #0f766e !important; }   /* teal-700 */
-.theme-sale .form-save                { background-color: #0d9488 !important; }   /* teal-600 */
-.theme-sale .form-save:hover          { background-color: #0f766e !important; }
 .theme-sale .section-highlight        { border-color: #2dd4bf !important; }        /* teal-400 */
 .theme-sale .section-highlight .section-body { background-color: rgba(240, 253, 250, 0.7) !important; }
 .theme-sale .scan-box                 { border-color: #14b8a6 !important; background-color: #f0fdfa !important; }
@@ -152,3 +153,9 @@ main .report-filters input[type="date"].absolute { position: absolute !important
 
 /* filter boxes that already sit in their own card keep their place */
 main .report-filters.flush { margin: 0 !important; }
+
+/* "Saved" popup: slides in from the corner; the bar shows how long it stays */
+.toast-card { width: min(340px, calc(100vw - 2rem)); animation: toast-in 0.25s ease-out; }
+.toast-bar { transform-origin: left; animation: toast-time linear forwards; }
+@keyframes toast-in { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+@keyframes toast-time { from { transform: scaleX(1); } to { transform: scaleX(0); } }

@@ -24,7 +24,7 @@ export const sectionIcons = {
 };
 
 // Title row shared by every data-entry form, so Clear / Save sit in the same place with the same look everywhere
-export function FormHeader({ icon, title, subtitle, onClear, onSave, saveLabel = 'Save', clearLabel = 'Clear Form', saving = false }) {
+export function FormHeader({ icon, title, subtitle, onClear, onSave, saveLabel = 'Save', clearLabel = 'Clear Form', saving = false, onSavePrint, savePrintLabel = 'Save & Print' }) {
   return (
     <div className="flex flex-wrap items-center gap-2 mb-2 pb-1.5 border-b border-gray-200">
       <span className="form-icon w-8 h-8 shrink-0 rounded-lg bg-slate-700 flex items-center justify-center text-white">{icon}</span>
@@ -33,6 +33,11 @@ export function FormHeader({ icon, title, subtitle, onClear, onSave, saveLabel =
         {subtitle && <p className="text-xs text-gray-500">{subtitle}</p>}
       </div>
       <div className="w-full sm:w-auto sm:ml-auto flex gap-2">
+        {onSavePrint && (
+          <button onClick={onSavePrint} disabled={saving} className="form-save flex-1 sm:flex-none px-4 py-2 text-sm font-bold text-white bg-blue-600 rounded-md shadow hover:bg-blue-700 disabled:bg-blue-300 transition-colors">
+            {savePrintLabel}
+          </button>
+        )}
         <button onClick={onClear} className="flex-1 sm:flex-none px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors">
           {clearLabel}
         </button>

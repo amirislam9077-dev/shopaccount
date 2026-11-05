@@ -1,6 +1,6 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import React, { useState, useEffect, useRef } from 'react';
-import { fmtNum, findDuplicateDesign, titleCase, designKey } from './format';
+import { fmtNum, findDuplicateDesign, titleCase, designKey, nowTime, timeToDisplay, useClock, withTime } from './format';
 import JsBarcode from 'jsbarcode';
 import SaleEntry from './sale';
 import PartyLedger from './partyledger';
@@ -9,6 +9,8 @@ import StockVsPayable from './position';
 import PhoneInput, { withContact, lookupPartyInfo } from './phoneinput';
 import SectionCard, { sectionIcons, FormHeader, formIcons } from './sectioncard';
 import ReportToolbar, { REPORT_START_DATE } from './reportexport';
+import { paymentVoucherHtml, printReceipt } from './salebill';
+import { showError, showSuccess } from './toast';
 import BarcodeMini from './barcodemini';
 import Pager, { PAGE_SIZE, pageCls, PagedTable } from './pager';
 import { API_URL, apiFetch, logOutEverywhere, openWebsite } from '../api';
@@ -215,6 +217,7 @@ function BarcodeCanvas({ value, designCode, saleRate }) {
 // ── purchase data entry form ──────────────────────────────────────────────────
 
 function PurchaseDataEntry({ nextId, onSaved, parties, designs, onAddParty, onDeleteParty, onAddDesign, onDeleteDesign, onRenameParty, onRenameDesign, products }) {
+  const clock = useClock();
   const [form, setForm] = useState({
     idNo: nextId || generateId(1),
     date: todayISO(),
@@ -391,6 +394,7 @@ function PurchaseDataEntry({ nextId, onSaved, parties, designs, onAddParty, onDe
         body: JSON.stringify({
           purchase_no: idNo,
           purchase_date: date,
+          purchase_time: nowTime(),
           party_name: titleCase(partyName),
           challan_no: challanNo,
           pieces: parseFloat(pieces),
@@ -408,12 +412,13 @@ function PurchaseDataEntry({ nextId, onSaved, parties, designs, onAddParty, onDe
         }),
       });
       const data = await res.json();
+      if (res.status === 409) { showError(data.error, `${designCode} is on ${data.usedBy}`); return; }
       if (!res.ok) throw new Error(data.error || 'Save failed');
       addToHistory('pieces', pieces);
       addToHistory('wholeSaleRate', wholeSaleRate);
       addToHistory('saleRate', saleRate);
       addToHistory('designName', designName);
-      alert('Product saved successfully!');
+      showSuccess('Purchase saved', `${titleCase(designName)} · ${pieces} pcs · ${titleCase(partyName)}`);
       if (onSaved) await onSaved();
       clearForm();
     } catch (err) {
@@ -431,7 +436,7 @@ function PurchaseDataEntry({ nextId, onSaved, parties, designs, onAddParty, onDe
     setPartyInfo({ contact: party.contact || '', whatsapp: party.whatsapp || '', facebook: party.facebook || '', instagram: party.instagram || '', address: party.address || '' });
     setShowPartyModal(false);
     setNewParty({ name: '', contact: '', address: '', facebook: '', instagram: '', whatsapp: '' });
-    alert(`Party "${party.name}" added successfully!`);
+    showSuccess('Party added', party.name);
   }
 
   function submitNewDesign() {
@@ -443,7 +448,7 @@ function PurchaseDataEntry({ nextId, onSaved, parties, designs, onAddParty, onDe
     set('designName', designName);
     setShowDesignModal(false);
     setNewDesign({ name: '', category: '', description: '' });
-    alert(`Design "${designName}" added successfully!`);
+    showSuccess('Design added', designName);
   }
 
   const inputCls = 'w-full px-2.5 py-1 border border-slate-500 rounded-md bg-slate-100 text-sm font-semibold text-gray-900 placeholder:font-normal placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-600 focus:bg-white transition-shadow';
@@ -458,7 +463,7 @@ function PurchaseDataEntry({ nextId, onSaved, parties, designs, onAddParty, onDe
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
           <div className="lg:col-span-2 space-y-2">
             <SectionCard title="Purchase Details" accent="blue" icon={sectionIcons.sale}>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1fr_1.35fr_1fr_1fr] gap-2">
               {/* ID Number */}
               <div>
                 <label className={labelCls}>Purchase ID Number</label>
@@ -467,12 +472,12 @@ function PurchaseDataEntry({ nextId, onSaved, parties, designs, onAddParty, onDe
 
               {/* Date */}
               <div>
-                <label className={labelCls}>Date</label>
+                <label className={labelCls}>Date &amp; Time</label>
                 <div className="relative">
                   <input
                     readOnly
-                    className={inputCls + ' cursor-pointer pr-10'}
-                    value={form.date ? isoToDisplay(form.date) : ''}
+                    className={inputCls + ' cursor-pointer pr-8'}
+                    value={form.date ? withTime(isoToDisplay(form.date), clock) : ''}
                     placeholder="dd/mm/yy"
                     onClick={() => document.getElementById('hiddenDatePicker').showPicker()}
                   />
@@ -804,7 +809,7 @@ function PurchaseDataEntry({ nextId, onSaved, parties, designs, onAddParty, onDe
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="bg-green-50">
-                      {['Pur No','Date','Challan No','Pieces','W/S Rate','Sale Rate','Design Name','Total Rs','Design Code'].map(h => (
+                      {['Pur No','Date & Time','Challan No','Pieces','W/S Rate','Sale Rate','Design Name','Total Rs','Design Code'].map(h => (
                         <th key={h} className="px-2 py-1 text-left font-semibold text-gray-600 whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
@@ -813,7 +818,7 @@ function PurchaseDataEntry({ nextId, onSaved, parties, designs, onAddParty, onDe
                     {rows.map(r => (
                       <tr key={r.id} className="hover:bg-green-50">
                         <td className="px-2 py-1 font-medium text-gray-800 whitespace-nowrap">{r.idNo}</td>
-                        <td className="px-2 py-1 text-gray-600 whitespace-nowrap">{isoToDisplay((r.date||'').slice(0,10))}</td>
+                        <td className="px-2 py-1 text-gray-600 whitespace-nowrap">{withTime(isoToDisplay((r.date||'').slice(0,10)), r.time)}</td>
                         <td className="px-2 py-1 text-gray-600">{r.challanNo}</td>
                         <td className="px-2 py-1 text-gray-700">{r.pieces}</td>
                         <td className="px-2 py-1 text-gray-700">Rs {fmtNum(r.wholeSaleRate)}</td>
@@ -1042,9 +1047,11 @@ function ProductTable({ products, onDelete, onReload, parties = [], designs = []
         }),
       });
       const data = await res.json();
+      if (res.status === 409) { showError(data.error, `${editForm.designCode} is on ${data.usedBy}`); return; }
       if (!res.ok) throw new Error(data.error || 'Update failed');
       closeEdit();
       onReload();
+      showSuccess('Purchase updated');
     } catch (err) {
       alert('Error updating: ' + err.message);
     }
@@ -1076,7 +1083,7 @@ function ProductTable({ products, onDelete, onReload, parties = [], designs = []
                   checked={paged.length > 0 && paged.every(p => selected.includes(p.id))}
                   className="rounded border-gray-300" />
               </th>
-              {['Pur No','Date','Party Name','Challan No','Pieces','W/S Rate','Sale Rate','Design Name','Total Rs','Design Code','Barcode','Actions'].map(h => (
+              {['Pur No','Date & Time','Party Name','Challan No','Pieces','W/S Rate','Sale Rate','Design Name','Total Rs','Design Code','Barcode','Actions'].map(h => (
                 <th key={h} className="px-3 py-2 text-left font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">{h}</th>
               ))}
             </tr>
@@ -1094,7 +1101,7 @@ function ProductTable({ products, onDelete, onReload, parties = [], designs = []
                     className="rounded border-gray-300" />
                 </td>
                 <td className="px-3 py-2 font-medium text-gray-900 whitespace-nowrap">{p.idNo}</td>
-                <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{isoToDisplay((p.date||'').slice(0,10))}</td>
+                <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{withTime(isoToDisplay((p.date||'').slice(0,10)), p.time)}</td>
                 <td className="px-3 py-2 text-gray-900 whitespace-nowrap">{p.partyName}</td>
                 <td className="px-3 py-2 text-gray-900 whitespace-nowrap">{p.challanNo}</td>
                 <td className="px-3 py-2 text-gray-900">{p.pieces}</td>
@@ -1292,7 +1299,7 @@ function ProductTable({ products, onDelete, onReload, parties = [], designs = []
             </div>
             <div className="flex justify-end gap-2 px-5 py-3 border-t border-gray-200 bg-gray-50 rounded-b-xl">
               <button onClick={closeEdit} className="px-3 py-1.5 text-xs text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50">Cancel</button>
-              <button onClick={saveEdit} className="px-3 py-1.5 text-xs text-white bg-blue-500 rounded hover:bg-blue-600">Save Changes</button>
+              <button onClick={saveEdit} className="form-save px-3 py-1.5 text-xs text-white bg-blue-500 rounded hover:bg-blue-600">Save Changes</button>
             </div>
           </div>
         </div>
@@ -1328,6 +1335,7 @@ const DEFAULT_EXPENSE_TYPES     = ['Amir Salary', 'Asif Salary', 'Rent Expenses'
 const DEFAULT_PARTY_PAY_TYPES   = ['Party Payment', 'Advance Payment', 'Full Payment', 'Partial Payment'];
 
 function PaymentEntry({ parties, mode = 'party' }) {
+  const clock = useClock();
   const today = todayISO();
   const isExpense = mode === 'expense';
 
@@ -1360,7 +1368,6 @@ function PaymentEntry({ parties, mode = 'party' }) {
   const [payments, setPayments]   = useState([]);
   const [loading, setLoading]     = useState(true);
   const [saving, setSaving]       = useState(false);
-  const [successMsg, setSuccessMsg] = useState('');
   const [editId, setEditId]       = useState(null);
   const [showPartyModal, setShowPartyModal] = useState(false);
   const [newParty, setNewParty]   = useState({ name: '', contact: '', whatsapp: '' });
@@ -1434,7 +1441,7 @@ function PaymentEntry({ parties, mode = 'party' }) {
     ...payParties,
   ].filter(Boolean).map(n => [designKey(n), n])).values()].sort((a, b) => a.localeCompare(b));
 
-  async function handleSave() {
+  async function handleSave({ print = false } = {}) {
     if (!isExpense && !form.partyName) return alert('Party Name is required');
     if (!form.amount || parseFloat(form.amount) <= 0) return alert('Amount is required');
     if (form.payMode === 'Cheque') {
@@ -1442,10 +1449,12 @@ function PaymentEntry({ parties, mode = 'party' }) {
       if (!String(form.chequeNo || '').trim()) return alert('Please enter the cheque number');
     }
     const paymentId = form.paymentId || nextPayIdFromList(payments);
+    const paymentTime = editId ? form.time : nowTime();
     setSaving(true);
     const body = {
       payment_id:   paymentId,
       payment_date: form.date,
+      payment_time: paymentTime,
       payment_type: form.paymentType,
       party_name:   form.partyName,
       bank:         form.payMode === 'Cash' ? 'Cash' : form.bank,
@@ -1454,16 +1463,27 @@ function PaymentEntry({ parties, mode = 'party' }) {
       remarks:      isExpense ? titleCase(form.remarks) : form.remarks,   // expense description is a name: capitalised
     };
     try {
-      if (editId) {
-        await apiFetch(`${API_PAY}/api/payments/${editId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      } else {
-        await apiFetch(`${API_PAY}/api/payments`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const res = editId
+        ? await apiFetch(`${API_PAY}/api/payments/${editId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        : await apiFetch(`${API_PAY}/api/payments`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (!res.ok) throw new Error('Save failed');
+      if (print) {
+        printReceipt(paymentVoucherHtml({
+          paymentId,
+          date: withTime(isoToDisplay(form.date), paymentTime),
+          partyName: form.partyName,
+          payMode: form.payMode,
+          bank: form.bank,
+          chequeNo: form.chequeNo,
+          amount: body.amount,
+          amountWords: numberToWords(body.amount),
+          remarks: form.remarks,
+        }));
       }
       setEditId(null);
       setForm(emptyForm());
       load();
-      setSuccessMsg(editId ? 'Payment updated successfully!' : 'Payment Data Entry is saved successfully!');
-      setTimeout(() => setSuccessMsg(''), 3000);
+      showSuccess(`${isExpense ? 'Expense' : 'Payment'} ${editId ? 'updated' : 'saved'}`, `${isExpense ? form.remarks : form.partyName} · Rs ${fmtNum(body.amount)}`);
     } catch (e) { alert('Save failed'); }
     setSaving(false);
   }
@@ -1473,6 +1493,7 @@ function PaymentEntry({ parties, mode = 'party' }) {
     setForm({
       paymentId:   p.payment_id,
       date:        (p.payment_date || '').slice(0, 10),
+      time:        p.payment_time || '',
       paymentType: p.payment_type || (isExpense ? '' : 'Party Payment'),
       partyName:   p.party_name,
       payMode:     needsCheque(p.bank) ? 'Cheque' : 'Cash',
@@ -1647,22 +1668,23 @@ function PaymentEntry({ parties, mode = 'party' }) {
           title={editId ? `Edit ${isExpense ? 'Expense' : 'Payment'}` : isExpense ? 'Expenses Data Entry' : 'Party Payment Data Entry'}
           subtitle={isExpense ? 'Record a shop expense' : 'Select a party to see their account, then record the payment'}
           onClear={handleCancel} clearLabel={editId ? 'Cancel Edit' : 'Clear Form'}
-          onSave={handleSave} saving={saving}
+          onSave={() => handleSave()} saving={saving}
+          onSavePrint={isExpense ? undefined : () => handleSave({ print: true })} savePrintLabel={editId ? 'Update & Print' : 'Save & Print'}
           saveLabel={editId ? `Update ${isExpense ? 'Expense' : 'Payment'}` : isExpense ? 'Save Expense' : 'Save Payment'} />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
           <div className="lg:col-span-2 space-y-2">
             <SectionCard title={isExpense ? 'Expense Details' : 'Payment Details'} accent="blue" icon={sectionIcons.sale}>
-              <div className={`grid grid-cols-1 sm:grid-cols-2 ${isExpense ? 'lg:grid-cols-[1.1fr_1.3fr_1.8fr_1.8fr]' : 'lg:grid-cols-[1.1fr_1.3fr_2.6fr]'} gap-2`}>
+              <div className={`grid grid-cols-1 sm:grid-cols-2 ${isExpense ? 'lg:grid-cols-[1fr_1.6fr_1.7fr_1.7fr]' : 'lg:grid-cols-[1.1fr_1.3fr_2.6fr]'} gap-2`}>
                 <div>
                   <label className={lCls}>Payment ID</label>
                   <input className={iCls + ' bg-gray-100 text-gray-500'} value={form.paymentId} readOnly />
                 </div>
                 <div>
-                  <label className={lCls}>Date</label>
+                  <label className={lCls}>Date &amp; Time</label>
                   <div className="relative">
                     <input readOnly className={iCls + ' cursor-pointer !px-2 !pr-7'}
-                      value={form.date ? isoToDisplay(form.date) : ''}
+                      value={form.date ? withTime(isoToDisplay(form.date), editId ? form.time : clock) : ''}
                       placeholder="dd/mm/yy"
                       onClick={() => document.getElementById('hiddenPaymentDatePicker').showPicker()}
                     />
@@ -1820,13 +1842,6 @@ function PaymentEntry({ parties, mode = 'party' }) {
                 </div>
               )}
             </SectionCard>
-
-            {successMsg && (
-              <div className="px-4 py-2.5 bg-green-50 border border-green-300 rounded-lg flex items-center gap-2">
-                <svg className="w-4 h-4 text-green-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                <span className="text-xs font-semibold text-green-700">{successMsg}</span>
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -1839,7 +1854,7 @@ function PaymentEntry({ parties, mode = 'party' }) {
             <PagedTable><table className="w-full text-xs">
               <thead className="sticky top-0 z-10">
                 <tr>
-                  {['#','Payment ID','Date','Payment Type','Party Name','Bank','Cheque No','Amount','Remarks','Actions'].map(h => (
+                  {['#','Payment ID','Date & Time','Payment Type','Party Name','Bank','Cheque No','Amount','Remarks','Actions'].map(h => (
                     <th key={h} className="px-3 py-2 text-left font-semibold text-gray-600 bg-gray-100 border-b-2 border-gray-200 whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -1852,7 +1867,7 @@ function PaymentEntry({ parties, mode = 'party' }) {
                   <tr key={p.payment_id} className={`hover:bg-blue-50 ${editId === p.payment_id ? 'bg-slate-50 ring-1 ring-slate-300' : ''}`}>
                     <td className="px-3 py-2 text-gray-400">{i + 1}</td>
                     <td className="px-3 py-2 font-semibold text-blue-700">{p.payment_id}</td>
-                    <td className="px-3 py-2 whitespace-nowrap text-gray-700">{isoToDisplay((p.payment_date || '').slice(0, 10))}</td>
+                    <td className="px-3 py-2 whitespace-nowrap text-gray-700">{withTime(isoToDisplay((p.payment_date || '').slice(0, 10)), p.payment_time)}</td>
                     <td className="px-3 py-2">
                       {p.payment_type ? (
                         <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-blue-100 text-blue-700">{p.payment_type}</span>
@@ -2156,6 +2171,7 @@ function PurchaseReport() {
           purchaseNo: r.purchase_no,
           challanNo:  r.challan_no,
           date:       (r.purchase_date || '').slice(0, 10),
+          time:       r.purchase_time,
           party:      r.party_name,
           design:     r.design_name,
           designCode: r.design_code,
@@ -2307,7 +2323,7 @@ function PurchaseReport() {
           <PagedTable><table className="w-full">
             <thead className="sticky top-0 z-10">
               <tr>
-                {['#','Date','Purchase No','Challan No','Party','Design Name','Design Code','Pieces','W/S Rate','Sale Rate','Total Amount'].map(h => (
+                {['#','Date & Time','Purchase No','Challan No','Party','Design Name','Design Code','Pieces','W/S Rate','Sale Rate','Total Amount'].map(h => (
                   <th key={h} className={thCls}>{h}</th>
                 ))}
               </tr>
@@ -2319,7 +2335,7 @@ function PurchaseReport() {
               {filtered.map((p, i) => (
                 <tr key={p.id} className="hover:bg-blue-50">
                   <td className={tdCls + ' text-gray-400'}>{i + 1}</td>
-                  <td className={tdCls + ' whitespace-nowrap font-medium text-gray-700'}>{isoToDisplay(p.date)}</td>
+                  <td className={tdCls + ' whitespace-nowrap font-medium text-gray-700'}>{withTime(isoToDisplay(p.date), p.time)}</td>
                   <td className={tdCls + ' text-blue-700 font-semibold'}>{p.purchaseNo || '—'}</td>
                   <td className={tdCls + ' text-gray-500'}>{p.challanNo || '—'}</td>
                   <td className={tdCls + ' font-medium text-gray-900'}>{p.party}</td>
@@ -2376,7 +2392,7 @@ function PurchaseReport() {
                       {/* Detail rows */}
                       {dayRows.map((p, i) => (
                         <tr key={p.id} className="hover:bg-slate-50 bg-white">
-                          <td className="px-3 py-1.5 text-xs text-gray-400 pl-8">↳ {p.purchaseNo || p.challanNo || `#${i+1}`}</td>
+                          <td className="px-3 py-1.5 text-xs text-gray-400 pl-8">↳ {[timeToDisplay(p.time), p.purchaseNo || p.challanNo || `#${i+1}`].filter(Boolean).join(' · ')}</td>
                           <td className="px-3 py-1.5 text-xs text-gray-700">{p.party}</td>
                           <td className="px-3 py-1.5 text-xs font-medium text-blue-700">{p.design} <span className="text-gray-400">{p.designCode}</span></td>
                           <td className="px-3 py-1.5 text-xs text-blue-700 font-bold">{p.pieces} pcs × Rs {fmtNum(p.wsRate)}</td>
@@ -2431,7 +2447,7 @@ function PurchaseReport() {
                     {partyRows.map((r, j) => (
                       <tr key={r.id} className="hover:bg-slate-50 bg-white">
                         <td className="px-3 py-1.5 text-xs text-gray-300 pl-8">↳</td>
-                        <td className="px-3 py-1.5 text-xs text-gray-500">{isoToDisplay(r.date)} · {r.purchaseNo || r.challanNo || `#${j+1}`}</td>
+                        <td className="px-3 py-1.5 text-xs text-gray-500">{withTime(isoToDisplay(r.date), r.time)} · {r.purchaseNo || r.challanNo || `#${j+1}`}</td>
                         <td className="px-3 py-1.5 text-xs font-medium text-blue-700">{r.design} <span className="text-gray-400">{r.designCode}</span></td>
                         <td className="px-3 py-1.5 text-xs font-bold text-blue-700">{r.pieces}</td>
                         <td className="px-3 py-1.5 text-xs text-slate-600">Rs {fmtNum(r.wsRate)}</td>
@@ -2488,7 +2504,7 @@ function PurchaseReport() {
                     {dRows.map((r, j) => (
                       <tr key={r.id} className="hover:bg-slate-50 bg-white">
                         <td className="px-3 py-1.5 text-xs text-gray-300 pl-8">↳</td>
-                        <td className="px-3 py-1.5 text-xs text-gray-500">{isoToDisplay(r.date)}</td>
+                        <td className="px-3 py-1.5 text-xs text-gray-500">{withTime(isoToDisplay(r.date), r.time)}</td>
                         <td className="px-3 py-1.5 text-xs text-gray-400">{r.purchaseNo || r.challanNo || `#${j+1}`}</td>
                         <td className="px-3 py-1.5 text-xs font-medium text-gray-700">{r.party}</td>
                         <td className="px-3 py-1.5 text-xs text-slate-600">Rs {fmtNum(r.wsRate)}</td>
@@ -2544,6 +2560,7 @@ function PaymentReport() {
           id:          r.id,
           paymentId:   r.payment_id,
           date:        (r.payment_date || '').slice(0, 10),
+          time:        r.payment_time,
           party:       r.party_name,
           paymentType: r.payment_type || '',
           bank:        r.bank || '',
@@ -2676,7 +2693,7 @@ function PaymentReport() {
           <PagedTable><table className="w-full">
             <thead className="sticky top-0 z-10">
               <tr>
-                {['#','Date','Payment ID','Party Name','Payment Type','Bank','Cheque No','Amount','Remarks'].map(h => (
+                {['#','Date & Time','Payment ID','Party Name','Payment Type','Bank','Cheque No','Amount','Remarks'].map(h => (
                   <th key={h} className={thCls}>{h}</th>
                 ))}
               </tr>
@@ -2688,7 +2705,7 @@ function PaymentReport() {
               {filtered.map((p, i) => (
                 <tr key={p.id} className="hover:bg-blue-50">
                   <td className={tdCls + ' text-gray-400'}>{i + 1}</td>
-                  <td className={tdCls + ' whitespace-nowrap font-medium text-gray-700'}>{isoToDisplay(p.date)}</td>
+                  <td className={tdCls + ' whitespace-nowrap font-medium text-gray-700'}>{withTime(isoToDisplay(p.date), p.time)}</td>
                   <td className={tdCls + ' text-blue-700 font-semibold'}>{p.paymentId}</td>
                   <td className={tdCls + ' font-medium text-gray-900'}>{p.party}</td>
                   <td className={tdCls}>
@@ -2738,7 +2755,7 @@ function PaymentReport() {
                     </tr>
                     {dayRows.map((p, i) => (
                       <tr key={p.id} className="hover:bg-slate-50 bg-white">
-                        <td className="px-3 py-1.5 text-xs text-gray-400 pl-8">↳ {p.paymentId}</td>
+                        <td className="px-3 py-1.5 text-xs text-gray-400 pl-8">↳ {[timeToDisplay(p.time), p.paymentId].filter(Boolean).join(' · ')}</td>
                         <td className="px-3 py-1.5 text-xs text-gray-700">{p.party} {p.paymentType ? <span className="ml-1 px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-600">{p.paymentType}</span> : ''}</td>
                         <td className="px-3 py-1.5 text-xs font-semibold text-blue-800">Rs {p.amount.toLocaleString('en-US', { maximumFractionDigits: 0 })}</td>
                       </tr>
@@ -2786,7 +2803,7 @@ function PaymentReport() {
                     {partyRows.map((r, j) => (
                       <tr key={r.id} className="hover:bg-slate-50 bg-white">
                         <td className="px-3 py-1.5 text-xs text-gray-300 pl-8">↳</td>
-                        <td className="px-3 py-1.5 text-xs text-gray-500">{isoToDisplay(r.date)} · {r.paymentId}</td>
+                        <td className="px-3 py-1.5 text-xs text-gray-500">{withTime(isoToDisplay(r.date), r.time)} · {r.paymentId}</td>
                         <td className="px-3 py-1.5 text-xs text-blue-600">{r.paymentType || '—'} {r.bank ? `· ${r.bank}` : ''}</td>
                         <td className="px-3 py-1.5 text-xs font-semibold text-blue-800">Rs {r.amount.toLocaleString('en-US', { maximumFractionDigits: 0 })}</td>
                       </tr>
@@ -2836,7 +2853,7 @@ function PaymentReport() {
                     {typeRows.map((r, j) => (
                       <tr key={r.id} className="hover:bg-slate-50 bg-white">
                         <td className="px-3 py-1.5 text-xs text-gray-300 pl-8">↳</td>
-                        <td className="px-3 py-1.5 text-xs text-gray-500">{isoToDisplay(r.date)} · {r.paymentId}</td>
+                        <td className="px-3 py-1.5 text-xs text-gray-500">{withTime(isoToDisplay(r.date), r.time)} · {r.paymentId}</td>
                         <td className="px-3 py-1.5 text-xs text-gray-700">{r.party} {r.bank ? `· ${r.bank}` : ''}</td>
                         <td className="px-3 py-1.5 text-xs font-semibold text-blue-800">Rs {r.amount.toLocaleString('en-US', { maximumFractionDigits: 0 })}</td>
                       </tr>
@@ -2889,6 +2906,7 @@ function SaleReport() {
           id:         r.id,
           saleId:     r.sale_id,
           date:       (r.sale_date || '').slice(0, 10),
+          time:       r.sale_time,
           party:      r.party_name,
           design:     r.design_name,
           designCode: r.design_code,
@@ -3073,7 +3091,7 @@ function SaleReport() {
           <table className="w-full">
             <thead className="sticky top-0 z-10">
               <tr>
-                {['#','Date','Sale ID','Party','Design Name','Design Code','Pieces','Sale Rate','Discount %','Discount Rs','Total Amount'].map(h => (
+                {['#','Date & Time','Sale ID','Party','Design Name','Design Code','Pieces','Sale Rate','Discount %','Discount Rs','Total Amount'].map(h => (
                   <th key={h} className={thCls}>{h}</th>
                 ))}
               </tr>
@@ -3085,7 +3103,7 @@ function SaleReport() {
               {filtered.map((s, i) => (
                 <tr key={s.id} className={`hover:bg-green-50 ${pageCls(i, page)}`}>
                   <td className={tdCls + ' text-gray-400'}>{i + 1}</td>
-                  <td className={tdCls + ' whitespace-nowrap font-medium text-gray-700'}>{isoToDisplay(s.date)}</td>
+                  <td className={tdCls + ' whitespace-nowrap font-medium text-gray-700'}>{withTime(isoToDisplay(s.date), s.time)}</td>
                   <td className={tdCls + ' text-green-700 font-semibold'}>{s.saleId || '—'}</td>
                   <td className={tdCls + ' font-medium text-gray-900'}>{s.party}</td>
                   <td className={tdCls + ' text-blue-700 font-medium'}>{s.design}</td>
@@ -3141,7 +3159,7 @@ function SaleReport() {
                     </tr>
                     {dayRows.map((s, i) => (
                       <tr key={s.id} className={`hover:bg-slate-50 bg-white ${pageCls(gi, page)}`}>
-                        <td className="px-3 py-1.5 text-xs text-gray-400 pl-8">↳ {s.saleId || `#${i+1}`}</td>
+                        <td className="px-3 py-1.5 text-xs text-gray-400 pl-8">↳ {[timeToDisplay(s.time), s.saleId || `#${i+1}`].filter(Boolean).join(' · ')}</td>
                         <td className="px-3 py-1.5 text-xs text-gray-700">{s.party}</td>
                         <td className="px-3 py-1.5 text-xs font-medium text-blue-700">{s.design} <span className="text-gray-400">{s.designCode}</span></td>
                         <td className="px-3 py-1.5 text-xs text-green-700 font-bold">{s.pieces} pcs × Rs {fmtNum(s.saleRate)}</td>
@@ -3198,7 +3216,7 @@ function SaleReport() {
                     {partyRows.map((s, j) => (
                       <tr key={s.id} className={`hover:bg-slate-50 bg-white ${pageCls(i, page)}`}>
                         <td className="px-3 py-1.5 text-xs text-gray-300 pl-8">↳</td>
-                        <td className="px-3 py-1.5 text-xs text-gray-500">{isoToDisplay(s.date)} · {s.saleId || `#${j+1}`}</td>
+                        <td className="px-3 py-1.5 text-xs text-gray-500">{withTime(isoToDisplay(s.date), s.time)} · {s.saleId || `#${j+1}`}</td>
                         <td className="px-3 py-1.5 text-xs font-medium text-blue-700">{s.design} <span className="text-gray-400">{s.designCode}</span></td>
                         <td className="px-3 py-1.5 text-xs font-bold text-green-700">{s.pieces}</td>
                         <td className="px-3 py-1.5 text-xs text-gray-600">Rs {fmtNum(s.saleRate)}</td>
@@ -3256,7 +3274,7 @@ function SaleReport() {
                     {dRows.map((s, j) => (
                       <tr key={s.id} className={`hover:bg-slate-50 bg-white ${pageCls(i, page)}`}>
                         <td className="px-3 py-1.5 text-xs text-gray-300 pl-8">↳</td>
-                        <td className="px-3 py-1.5 text-xs text-gray-500">{isoToDisplay(s.date)}</td>
+                        <td className="px-3 py-1.5 text-xs text-gray-500">{withTime(isoToDisplay(s.date), s.time)}</td>
                         <td className="px-3 py-1.5 text-xs text-gray-400">{s.saleId || `#${j+1}`}</td>
                         <td className="px-3 py-1.5 text-xs font-medium text-gray-700">{s.party}</td>
                         <td className="px-3 py-1.5 text-xs font-bold text-green-700">{s.pieces}</td>
@@ -3318,6 +3336,7 @@ function StockReport() {
         purchaseNo: r.purchase_no,
         challanNo: r.challan_no,
         date: (r.purchase_date || '').slice(0, 10),
+        time: r.purchase_time,
         party: r.party_name,
         design: r.design_name,
         designCode: r.design_code,
@@ -3331,6 +3350,7 @@ function StockReport() {
         id: r.id,
         saleId: r.sale_id,
         date: (r.sale_date || '').slice(0, 10),
+        time: r.sale_time,
         party: r.party_name,
         design: r.design_name,
         designCode: r.design_code,
@@ -3609,7 +3629,7 @@ function StockReport() {
                       <PagedTable><table className="w-full text-xs">
                         <thead>
                           <tr className="bg-gray-100">
-                            <th className="px-3 py-1.5 text-left font-semibold text-gray-600 whitespace-nowrap">Date</th>
+                            <th className="px-3 py-1.5 text-left font-semibold text-gray-600 whitespace-nowrap">Date &amp; Time</th>
                             <th className="px-3 py-1.5 text-left font-semibold text-gray-600 whitespace-nowrap">Party</th>
                             <th className="px-3 py-1.5 text-left font-semibold text-gray-600 whitespace-nowrap">Ref No</th>
                             <th className="px-3 py-1.5 text-center font-semibold text-blue-700 bg-blue-50 whitespace-nowrap">IN (Pcs)</th>
@@ -3624,7 +3644,7 @@ function StockReport() {
                         <tbody className="divide-y divide-gray-100">
                           {rows.map((row, i) => (
                             <tr key={i} className={row._type === 'IN' ? 'bg-blue-50 border-l-4 border-blue-400' : 'bg-green-50 border-l-4 border-green-400'}>
-                              <td className={`px-3 py-1.5 font-semibold whitespace-nowrap ${row._type === 'IN' ? 'text-blue-800' : 'text-green-800'}`}>{isoToDisplay(row.date)}</td>
+                              <td className={`px-3 py-1.5 font-semibold whitespace-nowrap ${row._type === 'IN' ? 'text-blue-800' : 'text-green-800'}`}>{withTime(isoToDisplay(row.date), row.time)}</td>
                               <td className={`px-3 py-1.5 whitespace-nowrap font-medium ${row._type === 'IN' ? 'text-blue-700' : 'text-green-700'}`}>{row.party}</td>
                               <td className="px-3 py-1.5 text-gray-400 whitespace-nowrap">
                                 {row._type === 'IN' ? row.purchaseNo || row.challanNo || '—' : row.saleId || '—'}
@@ -3979,7 +3999,7 @@ function StockReport() {
             <PagedTable><table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  {['Date', 'Type', 'Party', 'Design', 'Design Code', 'Pieces', 'Rate', 'Discount', 'Amount'].map(h => (
+                  {['Date & Time', 'Type', 'Party', 'Design', 'Design Code', 'Pieces', 'Rate', 'Discount', 'Amount'].map(h => (
                     <th key={h} className={thCls}>{h}</th>
                   ))}
                 </tr>
@@ -3990,7 +4010,7 @@ function StockReport() {
                   ...filteredSal.map(s => ({ ...s, type: 'Sale', rate: s.saleRate })),
                 ].sort((a, b) => b.date.localeCompare(a.date)).map((row, i) => (
                   <tr key={`${row.type}-${row.id}-${i}`} className={`hover:bg-blue-50 ${row.type === 'Purchase' ? 'bg-blue-50/30' : 'bg-green-50/30'}`}>
-                    <td className={`${tdCls} font-medium`}>{isoToDisplay(row.date)}</td>
+                    <td className={`${tdCls} font-medium`}>{withTime(isoToDisplay(row.date), row.time)}</td>
                     <td className="px-3 py-2">
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${row.type === 'Purchase' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
                         {row.type}
@@ -4704,6 +4724,7 @@ export default function MainMenu() {
         id: r.id,
         idNo: r.purchase_no,
         date: r.purchase_date,
+        time: r.purchase_time,
         partyName: r.party_name,
         challanNo: r.challan_no,
         pieces: r.pieces,

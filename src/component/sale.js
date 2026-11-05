@@ -1,10 +1,13 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import React, { useState, useEffect, useRef } from 'react';
-import { fmtNum, findDuplicateDesign, titleCase } from './format';
+import { fmtNum, findDuplicateDesign, titleCase, nowTime, useClock, withTime } from './format';
 import JsBarcode from 'jsbarcode';
-import PhoneInput, { withContact, lookupPartyInfo } from './phoneinput';
+import PhoneInput, { PK_PREFIX, withContact, lookupPartyInfo } from './phoneinput';
 import SectionCard, { sectionIcons, FormHeader, formIcons } from './sectioncard';
 import BarcodeMini from './barcodemini';
+import { printReceipt, saleBillHtml } from './salebill';
+import SalePaymentDialog from './salepayment';
+import { showSuccess } from './toast';
 import { PAGE_SIZE, pageCls } from './pager';
 import { API_URL, apiFetch } from '../api';
 
@@ -71,6 +74,7 @@ function mapRow(r) {
     dbId: r.id,
     id: r.sale_id,
     date: r.sale_date,
+    time: r.sale_time,
     party: r.party_name,
     pieces: r.sale_pieces,
     saleRate: r.sale_rate,
@@ -133,6 +137,9 @@ function SaleDataEntry({ nextId, onSaved, sales, designs, purchases, onAddParty,
     saleTotal: '',
   });
   const [amountWords, setAmountWords] = useState('Zero Rupees Only');
+  const [askPayment, setAskPayment] = useState(false);
+  // A new sale shows the clock, an edit keeps its own time
+  const clock = useClock();
   useEffect(() => {
     if (nextId) setForm(f => ({ ...f, saleId: nextId }));
   }, [nextId]);
@@ -286,6 +293,7 @@ function SaleDataEntry({ nextId, onSaved, sales, designs, purchases, onAddParty,
     setForm({
       saleId: s.id || '',
       date: s.date ? new Date(s.date).toLocaleDateString('en-CA') : todayISO(),   // API date is UTC
+      time: s.time || '',
       partyName: s.party || 'Cash',
       salePieces: s.pieces ?? '',
       saleRate: s.saleRate ?? '',
@@ -406,12 +414,50 @@ function SaleDataEntry({ nextId, onSaved, sales, designs, purchases, onAddParty,
     });
   }
 
-  async function saveSale() {
-    console.log('Form data before save:', form);
-    const { date, partyName, salePieces, saleRate, designName, saleTotal, designCode, barcode, discount } = form;
-    if (!date || !partyName || !salePieces || !saleRate || !designName || !saleTotal) {
+  function saleFormComplete() {
+    const { date, partyName, salePieces, saleRate, designName, saleTotal } = form;
+    return Boolean(date && partyName && salePieces && saleRate && designName && saleTotal);
+  }
+
+  // What the bill shows; saleId is only known for certain once the sale is saved
+  function saleBill(saleId, time, payment) {
+    return {
+      saleId,
+      date: withTime(isoToDisplay(form.date), time),
+      customer: form.partyName,
+      phone: partyInfo.contact ? `${PK_PREFIX}${partyInfo.contact}` : '',
+      address: partyInfo.address,
+      designName: titleCase(form.designName),
+      designCode: form.designCode,
+      pieces: form.salePieces,
+      rate: form.saleRate,
+      discount: form.discount,
+      total: form.saleTotal,
+      amountWords,
+      payment,
+    };
+  }
+
+  // Save & Print asks for the payment first; the sale is saved when that is confirmed
+  function startSavePrint() {
+    if (!saleFormComplete()) {
       alert('Please fill in all required fields');
       return;
+    }
+    setAskPayment(true);
+  }
+
+  async function confirmPayment(payment) {
+    if (await saveSale({ payment })) setAskPayment(false);
+  }
+
+  // With a payment the bill is printed as well. Returns true when the sale was saved.
+  async function saveSale({ payment } = {}) {
+    console.log('Form data before save:', form);
+    const { date, partyName, salePieces, saleRate, designName, saleTotal, designCode, barcode, discount } = form;
+    if (!saleFormComplete()) {
+      alert('Please fill in all required fields');
+      return false;
     }
     try {
       // Generate unique sale ID
@@ -420,9 +466,11 @@ function SaleDataEntry({ nextId, onSaved, sales, designs, purchases, onAddParty,
       const uniqueSaleId = `Sale-${timestamp}-${random}`;
       
       const wsRate = parseFloat((purchases || []).filter(p => p.designName === designName).sort((a,b) => b.id - a.id)[0]?.wholeSaleRate) || 0;
+      const saleTime = editId ? form.time : nowTime();
       const saleData = {
         sale_id: editId ? form.saleId : uniqueSaleId,
         sale_date: date,
+        sale_time: saleTime,
         party_name: partyName,
         sale_pieces: salePieces,
         sale_rate: saleRate,
@@ -464,12 +512,22 @@ function SaleDataEntry({ nextId, onSaved, sales, designs, purchases, onAddParty,
       addToHistory('saleRate', saleRate);
       addToHistory('discount', discount);
       addToHistory('designName', designName);
-      alert(editId ? 'Sale updated successfully!' : 'Sale saved successfully!');
+      showSuccess(editId ? 'Sale updated' : 'Sale saved', `${saleData.design_name} · ${salePieces} pcs · Rs ${fmtNum(Math.round(saleTotal))}`);
+      if (payment) {
+        try {
+          printReceipt(saleBillHtml(saleBill(saleData.sale_id, saleTime, payment)));
+        } catch (err) {
+          console.error('Print bill error:', err);
+          alert('The sale was saved, but the bill could not be printed.');
+        }
+      }
       if (onSaved) onSaved();
       clearForm();
+      return true;
     } catch (err) {
       console.error('Save sale error:', err);
       alert('Error saving sale: ' + err.message);
+      return false;
     }
   }
 
@@ -481,7 +539,7 @@ function SaleDataEntry({ nextId, onSaved, sales, designs, purchases, onAddParty,
     setPartyInfo({ contact: partyObj.contact, whatsapp: partyObj.whatsapp, facebook: partyObj.facebook, instagram: partyObj.instagram, address: partyObj.address });
     setShowPartyModal(false);
     setNewParty({ name: '', contact: '', address: '', facebook: '', instagram: '', whatsapp: '' });
-    alert(`Party "${partyObj.name}" added successfully!`);
+    showSuccess('Party added', partyObj.name);
   }
 
   function submitNewDesign() {
@@ -493,7 +551,7 @@ function SaleDataEntry({ nextId, onSaved, sales, designs, purchases, onAddParty,
     set('designName', designName);
     setShowDesignModal(false);
     setNewDesign({ name: '', category: '', description: '' });
-    alert(`Design "${designName}" added successfully!`);
+    showSuccess('Design added', designName);
   }
 
   const inputCls = 'w-full px-2.5 py-1 border border-slate-500 rounded-md bg-slate-100 text-sm font-semibold text-gray-900 placeholder:font-normal placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-600 focus:bg-white transition-shadow';
@@ -510,12 +568,13 @@ function SaleDataEntry({ nextId, onSaved, sales, designs, purchases, onAddParty,
         <FormHeader icon={formIcons.sale} title={editId ? `Edit Sale — ${form.saleId}` : 'Sale Data Entry'}
           subtitle={editId ? 'Change the details and press Update Sale, or Cancel Edit to go back' : "Enter sale details, then the customer's phone — saved customers fill in automatically"}
           onClear={clearForm} clearLabel={editId ? 'Cancel Edit' : 'Clear Form'}
-          onSave={saveSale} saveLabel={editId ? 'Update Sale' : 'Save Sale'} />
+          onSave={() => saveSale()} saveLabel={editId ? 'Update Sale' : 'Save Sale'}
+          onSavePrint={startSavePrint} savePrintLabel={editId ? 'Update & Print' : 'Save & Print'} />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
           <div className="lg:col-span-2 space-y-2">
             <SectionCard title="Sale Details" accent="blue" icon={sectionIcons.sale}>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1.1fr_1.1fr_2fr_1.6fr] gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1fr_1.6fr_1.6fr_1.6fr] gap-2">
               {/* Sale ID */}
               <div>
                 <label className={labelCls}>Sale Number ID</label>
@@ -524,10 +583,10 @@ function SaleDataEntry({ nextId, onSaved, sales, designs, purchases, onAddParty,
 
               {/* Date */}
               <div>
-                <label className={labelCls}>Date</label>
+                <label className={labelCls}>Date &amp; Time</label>
                 <div className="relative">
                   <input readOnly className={inputCls + ' cursor-pointer pr-8'}
-                    value={form.date ? isoToDisplay(form.date) : ''}
+                    value={form.date ? withTime(isoToDisplay(form.date), editId ? form.time : clock) : ''}
                     placeholder="dd/mm/yy"
                     onClick={() => document.getElementById('saleDatePicker').showPicker()} />
                   <button type="button"
@@ -935,6 +994,11 @@ function SaleDataEntry({ nextId, onSaved, sales, designs, purchases, onAddParty,
       </div>
 
       {/* Add Party Modal */}
+      {askPayment && (
+        <SalePaymentDialog bill={saleBill(editId ? form.saleId : '(after saving)', editId ? form.time : clock)}
+          onCancel={() => setAskPayment(false)} onConfirm={confirmPayment} />
+      )}
+
       {showPartyModal && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 z-50 flex items-center justify-center">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4">
@@ -1169,6 +1233,7 @@ function SaleTable({ sales, onDelete, onUpdate, onEdit, parties = [], designs = 
       }
       onUpdate();
       closeEdit();
+      showSuccess('Sale updated');
     } catch (err) {
       alert('Error updating sale: ' + err.message);
     }
@@ -1200,7 +1265,7 @@ function SaleTable({ sales, onDelete, onUpdate, onEdit, parties = [], designs = 
                   checked={paged.length > 0 && paged.every(s => selected.includes(s.dbId))}
                   className="rounded border-gray-300" />
               </th>
-              {['Sale ID','Date','Party','Pieces','Sale Rate','Discount %','Discount Rs','Total Rs','Design','Barcode','Actions'].map(h => (
+              {['Sale ID','Date & Time','Party','Pieces','Sale Rate','Discount %','Discount Rs','Total Rs','Design','Barcode','Actions'].map(h => (
                 <th key={h} className="px-3 py-2 text-left font-semibold text-gray-700 uppercase tracking-wider">{h}</th>
               ))}
             </tr>
@@ -1215,7 +1280,7 @@ function SaleTable({ sales, onDelete, onUpdate, onEdit, parties = [], designs = 
                     className="rounded border-gray-300" />
                 </td>
                 <td className="px-3 py-2 font-medium text-gray-900">{sale.id}</td>
-                <td className="px-3 py-2 text-gray-600">{isoToDisplay((sale.date||'').slice(0,10))}</td>
+                <td className="px-3 py-2 text-gray-600">{withTime(isoToDisplay((sale.date||'').slice(0,10)), sale.time)}</td>
                 <td className="px-3 py-2 text-gray-900">{sale.party}</td>
                 <td className="px-3 py-2 text-gray-900">{sale.pieces}</td>
                 <td className="px-3 py-2 text-gray-900">Rs {fmtNum(sale.saleRate)}</td>
@@ -1423,7 +1488,7 @@ function SaleTable({ sales, onDelete, onUpdate, onEdit, parties = [], designs = 
 
             <div className="flex justify-end gap-2 px-5 py-3 border-t border-gray-200 bg-gray-50 rounded-b-xl">
               <button onClick={closeEdit} className="px-3 py-1.5 text-xs text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50">Cancel</button>
-              <button onClick={saveEdit} className="px-3 py-1.5 text-xs text-white bg-blue-500 rounded hover:bg-blue-600">Save Changes</button>
+              <button onClick={saveEdit} className="form-save px-3 py-1.5 text-xs text-white bg-blue-500 rounded hover:bg-blue-600">Save Changes</button>
             </div>
           </div>
         </div>
