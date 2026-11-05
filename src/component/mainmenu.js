@@ -4902,7 +4902,7 @@ export default function MainMenu() {
 
         {/* Main Content */}
         <main ref={mainRef} className="flex-1 min-w-0 p-1.5 sm:p-2 overflow-x-hidden overflow-y-auto">
-          {viewTitles[activeView] && <ReportToolbar title={viewTitles[activeView][1]} rootRef={mainRef} />}
+          {viewTitles[activeView] && viewTitles[activeView][0] !== 'Data Entry' && <ReportToolbar title={viewTitles[activeView][1]} rootRef={mainRef} />}
           {renderContent()}
         </main>
       </div>
